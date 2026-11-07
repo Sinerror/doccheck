@@ -20,12 +20,13 @@ services:
     environment:
       - QDRANT_URL=http://qdrant:6333
       - DOCCHECK_RUNS_DIR=/app/runs
+      - FASTEMBED_CACHE_PATH=/cache/fastembed
     ports:
       - "127.0.0.1:8000:8000"
     volumes:
       - ./runs:/app/runs
       - ./data:/app/data:ro
-      - fastembed_cache:/root/.cache/fastembed
+      - fastembed_cache:/cache/fastembed
 
 volumes:
   qdrant_data:

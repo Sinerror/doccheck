@@ -1,7 +1,7 @@
 [project]
 name = "doccheck"
-version = "0.1.0"
-description = "TRIAD — agentic scientific paper reviewer (Scout → Analyst ⇄ Critic)"
+version = "0.2.0"
+description = "DocCheck — multi-agent checking of business documents against company sources (Scout → Analyst ⇄ Critic, hybrid RAG on Qdrant)"
 readme = "README.md"
 requires-python = ">=3.11,<3.14"
 dependencies = [
