@@ -13,10 +13,10 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from doccheck.events import EVENT_DATA_MODELS, Event  # noqa: E402
-from doccheck.models import AnalystRevision, AnalystVerdict, ClaimWithQueries, Critique, MetaReview  # noqa: E402
+from doccheck.models import AnalystRevision, AnalystVerdict, Claim, Critique, Summary  # noqa: E402
 
 # Domain payloads carried inside agent.output / scout.claims (typed on the frontend via casts).
-DOMAIN_MODELS = (ClaimWithQueries, AnalystVerdict, AnalystRevision, Critique, MetaReview)
+DOMAIN_MODELS = (Claim, AnalystVerdict, AnalystRevision, Critique, Summary)
 
 
 def ts_type(s: dict[str, Any], defs: dict[str, Any]) -> str:
@@ -84,9 +84,9 @@ def generate() -> str:
         emit_model(model)
     out.append("export interface EventDataMap {\n" + "\n".join(f'  "{k}": {v};' for k, v in names.items()) + "\n}\n")
     out.append("export type EventType = keyof EventDataMap;\n")
-    out.append("export interface TriadEventOf<T extends EventType> {\n" + "\n".join(f"  {p};" for p in env_props)
+    out.append("export interface DocCheckEventOf<T extends EventType> {\n" + "\n".join(f"  {p};" for p in env_props)
                + "\n  type: T;\n  data: EventDataMap[T];\n}\n")
-    out.append("export type TriadEvent = { [K in EventType]: TriadEventOf<K> }[EventType];\n")
+    out.append("export type DocCheckEvent = { [K in EventType]: DocCheckEventOf<K> }[EventType];\n")
     out.append("export const EVENT_TYPES: EventType[] = [" + ", ".join(f'"{k}"' for k in names) + "];\n")
     return "\n".join(out)
 

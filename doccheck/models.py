@@ -1,7 +1,8 @@
 """Domain schemas shared by roles, orchestrator and report.
 
 `reasoning` is the FIRST field of every LLM output schema: the UI streams it
-while the rest of the JSON is still being generated.
+while the rest of the JSON is still being generated. Enum values stay in English (stable API);
+the report and the UI show Russian labels (VERDICT_RU).
 """
 from __future__ import annotations
 
@@ -12,31 +13,25 @@ from pydantic import BaseModel, Field
 
 
 class ClaimType(str, Enum):
-    empirical = "empirical"
-    theoretical = "theoretical"
-    novelty = "novelty"
-    comparison = "comparison"
+    number = "number"          # price, limit, percentage, quantity
+    deadline = "deadline"      # term, date, period, response time
+    condition = "condition"    # when / for whom / under what condition something applies
+    reference = "reference"    # "according to clause 4.2 of the offer ..."
+    feature = "feature"        # what is included / available in a plan or region
+    other = "other"
 
 
 class Claim(BaseModel):
     id: str = Field(description="Short id like C1, C2, ...")
-    text: str = Field(description="The claim, as close to the paper's wording as possible")
+    text: str = Field(description="The claim, self-contained, as close to the document's wording as possible")
     type: ClaimType
-    section: str = Field(description="Section of the paper where the claim is made")
-
-
-class ClaimWithQueries(Claim):
-    search_queries: list[str] = Field(description="2-3 literature search queries that would find evidence for or against this claim")
+    quote: str = Field(description="The exact sentence of the document the claim was taken from")
+    section: str = Field(default="", description="Heading of the document part where the claim is made, if any")
 
 
 class ScoutClaimsOutput(BaseModel):
-    reasoning: str = Field(description="Brief notes on which claims are central and why")
-    claims: list[ClaimWithQueries]
-
-
-class ScoutRankOutput(BaseModel):
-    reasoning: str = Field(description="Brief notes on the selection")
-    selected: list[str] = Field(description="Candidate keys (e.g. P3) ordered by relevance, most relevant first")
+    reasoning: str = Field(description="Brief notes: what the document is, which statements are checkable")
+    claims: list[Claim]
 
 
 class Verdict(str, Enum):
@@ -45,6 +40,15 @@ class Verdict(str, Enum):
     CONTRADICTED = "CONTRADICTED"
     OVERSTATED = "OVERSTATED"
     UNVERIFIABLE = "UNVERIFIABLE"
+
+
+VERDICT_RU = {
+    "SUPPORTED": "подтверждено",
+    "PARTIALLY_SUPPORTED": "подтверждено частично",
+    "CONTRADICTED": "противоречит источникам",
+    "OVERSTATED": "преувеличено",
+    "UNVERIFIABLE": "не найдено в источниках",
+}
 
 
 class Stance(str, Enum):
@@ -60,15 +64,18 @@ class Evidence(BaseModel):
 
 
 class AnalystVerdict(BaseModel):
-    reasoning: str = Field(description="Step-by-step reasoning about the claim against the evidence")
+    reasoning: str = Field(description="Step-by-step reasoning about the claim against the sources")
     verdict: Verdict
     confidence: float = Field(ge=0, le=1)
     evidence: list[Evidence]
+    correction: str | None = Field(default=None, description="If the claim is wrong: the correct statement "
+                                                             "according to the sources, one sentence; else null")
     concerns: list[str]
 
 
 class AnalystRevision(AnalystVerdict):
-    response_to_critic: str = Field(description="Point-by-point answer to the critic: what you accept, what you reject and why")
+    response_to_critic: str = Field(description="Point-by-point answer to the critic: what you accept, "
+                                                "what you reject and why")
 
 
 class CriticStance(str, Enum):
@@ -77,7 +84,8 @@ class CriticStance(str, Enum):
 
 
 IssueType = Literal[
-    "ungrounded_quote", "overclaim", "missed_contradiction", "wrong_scope", "weak_evidence", "wrong_verdict"
+    "ungrounded_quote", "overclaim", "missed_contradiction", "wrong_scope", "weak_evidence", "wrong_verdict",
+    "outdated_source",
 ]
 Severity = Literal["low", "medium", "high"]
 
@@ -98,12 +106,13 @@ class Critique(BaseModel):
     reasoning: str = Field(description="Your audit of the analyst's verdict")
     stance: CriticStance
     issues: list[Issue]
-    suggested_verdict: Verdict | None = Field(default=None, description="Verdict you believe is correct, or null if you agree")
+    suggested_verdict: Verdict | None = Field(default=None,
+                                              description="Verdict you believe is correct, or null if you agree")
 
 
-class MetaReview(BaseModel):
+class Summary(BaseModel):
     reasoning: str = Field(description="Short notes on the overall picture")
-    meta_review: str = Field(description="5-8 sentence meta-review grounded ONLY in the verified verdicts provided")
+    summary: str = Field(description="3-6 sentences in Russian, grounded ONLY in the verified verdicts provided")
 
 
 ClaimStatus = Literal["accepted", "revised", "disputed"]

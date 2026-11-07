@@ -1,5 +1,5 @@
 // Pure reducer: the whole UI state is a fold over the backend event stream.
-// Nothing here invents data — every field is derived from a TriadEvent.
+// Nothing here invents data — every field is derived from a DocCheckEvent.
 import type {
   AnalystRevision,
   AnalystVerdict,
@@ -9,7 +9,7 @@ import type {
   Metrics,
   RagRetrieval,
   ScoutPaperFound,
-  TriadEvent,
+  DocCheckEvent,
 } from "../types/events";
 
 export type StageName = "ingest" | "scout" | "index" | "analyze" | "report";
@@ -96,7 +96,7 @@ export interface RunState {
   pulses: Pulse[];
   errors: { seq: number; message: string; where?: string | null; fatal: boolean; claim_id?: string | null }[];
   summary?: Record<string, unknown>;
-  events: TriadEvent[];
+  events: DocCheckEvent[];
   firstTs?: number;
   lastTs?: number;
   lastSeq: number;
@@ -157,7 +157,7 @@ function paperOf(chunkId: string): string {
 }
 export { paperOf };
 
-export function reduce(state: RunState, ev: TriadEvent): RunState {
+export function reduce(state: RunState, ev: DocCheckEvent): RunState {
   if (ev.seq <= state.lastSeq) return state; // idempotent against reconnect duplicates
   let s: RunState = {
     ...state,

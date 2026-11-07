@@ -24,10 +24,13 @@ class GroundingResult:
         return asdict(self)
 
 
+_QUOTES = str.maketrans({"’": "'", "‘": "'", "“": '"', "”": '"', "„": '"', "«": '"', "»": '"',
+                         "–": "-", "—": "-", "−": "-", " ": " ", " ": " ", "ё": "е", "Ё": "Е"})
+
+
 def _norm(s: str) -> str:
-    s = s.replace("’", "'").replace("‘", "'").replace("“", '"').replace("”", '"')
-    s = s.replace("–", "-").replace("—", "-").replace(" ", " ")
-    return re.sub(r"\s+", " ", s).strip()
+    """Typography must not fail a verbatim quote: «» vs "", ё vs е, NBSP in "1 490 ₽", dashes."""
+    return re.sub(r"\s+", " ", s.translate(_QUOTES)).strip()
 
 
 def score_quote(quote: str, chunk_text: str) -> float:

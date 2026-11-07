@@ -216,7 +216,7 @@ export interface EventDataMap {
 
 export type EventType = keyof EventDataMap;
 
-export interface TriadEventOf<T extends EventType> {
+export interface DocCheckEventOf<T extends EventType> {
   seq: number;
   ts: number;
   run_id: string;
@@ -226,6 +226,6 @@ export interface TriadEventOf<T extends EventType> {
   data: EventDataMap[T];
 }
 
-export type TriadEvent = { [K in EventType]: TriadEventOf<K> }[EventType];
+export type DocCheckEvent = { [K in EventType]: DocCheckEventOf<K> }[EventType];
 
 export const EVENT_TYPES: EventType[] = ["run.started", "stage.started", "stage.finished", "scout.claims", "scout.query", "scout.paper_found", "rag.indexed", "rag.retrieval", "agent.started", "agent.partial", "agent.output", "tool.call", "tool.result", "grounding.check", "debate.round", "claim.final", "metrics", "run.finished", "error"];

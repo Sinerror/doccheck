@@ -1,14 +1,17 @@
-"""Sentence-aware chunking: ~2500 chars, ~300 overlap, never splits mid-sentence
+"""Sentence-aware chunking (Russian and English): ~1200 chars, ~200 overlap, never splits mid-sentence
 (unless a single "sentence" is longer than the chunk size). Chunks never cross sections."""
 from __future__ import annotations
 
 import re
 from dataclasses import dataclass
 
-CHUNK_SIZE = 2500
-OVERLAP = 300
+CHUNK_SIZE = 1200
+OVERLAP = 200
 
-_SENT_SPLIT = re.compile(r"(?<=[.!?])[\"')\]]*\s+(?=[A-Z0-9(\[\"'])")
+# sentence end + optional closing quote/bracket + space + an upper-case letter (Latin or Cyrillic), digit,
+# opening quote or bracket.
+_SENT_SPLIT = re.compile(r"(?<=[.!?…])[\"'»)\]]*\s+(?=[A-ZА-ЯЁ0-9(\[\"'«])")
+_CLAUSE_NO = re.compile(r"^(?:\d+\.)+\d*\.?$|^[А-ЯA-Z]\.$")  # "4.2." / "3." / "п." left alone by the split
 
 
 @dataclass
@@ -22,7 +25,15 @@ def split_sentences(text: str) -> list[str]:
     text = re.sub(r"\s+", " ", text).strip()
     if not text:
         return []
-    return [s.strip() for s in _SENT_SPLIT.split(text) if s.strip()]
+    out: list[str] = []
+    for s in (s.strip() for s in _SENT_SPLIT.split(text)):
+        if not s:
+            continue
+        if out and _CLAUSE_NO.match(out[-1]):  # a clause number belongs to the sentence after it
+            out[-1] = f"{out[-1]} {s}"
+        else:
+            out.append(s)
+    return out
 
 
 def _hard_split(sentence: str, size: int) -> list[str]:

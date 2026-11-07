@@ -1,10 +1,10 @@
 import { useEffect, useReducer, useRef, useState } from "react";
-import type { TriadEvent } from "../types/events";
+import type { DocCheckEvent } from "../types/events";
 import { initialState, reduce, type RunState } from "./runReducer";
 
 export type StreamMode = "live" | "replay";
 
-type Action = { kind: "reset"; runId: string } | { kind: "events"; events: TriadEvent[] };
+type Action = { kind: "reset"; runId: string } | { kind: "events"; events: DocCheckEvent[] };
 
 function reducer(state: RunState, a: Action): RunState {
   if (a.kind === "reset") return initialState(a.runId);
@@ -24,7 +24,7 @@ export interface StreamInfo {
 export function useRunStream(runId: string, mode: StreamMode, speed = 4, nonce = 0): [RunState, StreamInfo] {
   const [state, dispatch] = useReducer(reducer, runId, initialState);
   const [info, setInfo] = useState<StreamInfo>({ connected: false, ended: false, error: null });
-  const buffer = useRef<TriadEvent[]>([]);
+  const buffer = useRef<DocCheckEvent[]>([]);
   const frame = useRef<number | null>(null);
 
   useEffect(() => {
@@ -50,7 +50,7 @@ export function useRunStream(runId: string, mode: StreamMode, speed = 4, nonce =
     es.onopen = () => setInfo((i) => ({ ...i, connected: true, error: null }));
     es.onmessage = (m) => {
       try {
-        buffer.current.push(JSON.parse(m.data) as TriadEvent);
+        buffer.current.push(JSON.parse(m.data) as DocCheckEvent);
       } catch {
         return;
       }

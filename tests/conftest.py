@@ -3,14 +3,20 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-import pymupdf
-import pytest
-from qdrant_client import QdrantClient
+# Tests use a small multilingual model (fast on CPU); production defaults to multilingual-e5-large.
+os.environ.setdefault("DOCCHECK_EMBED_MODEL", "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2")
 
-from doccheck.rag.qdrant_store import QdrantStore
+import pymupdf  # noqa: E402
+import pytest  # noqa: E402
+from qdrant_client import QdrantClient  # noqa: E402
 
+from doccheck.rag.qdrant_store import QdrantStore  # noqa: E402
+
+ROOT = Path(__file__).resolve().parent.parent
 FIXTURES = Path(__file__).parent / "fixtures"
 LLM_FIXTURES = FIXTURES / "llm"
+CORPUS = ROOT / "data" / "corpus"
+EVAL_DOCS = ROOT / "data" / "eval" / "docs"
 RECORD = os.environ.get("DOCCHECK_RECORD") == "1"
 
 
@@ -22,7 +28,7 @@ def mem_store() -> QdrantStore:
 
 
 def make_pdf(title: str, sections: list[tuple[str, str]]) -> bytes:
-    """Build a small paper-like PDF: big title, bold 12pt numbered headings, 10pt body."""
+    """Build a small PDF: big title, bold 12pt numbered headings, 10pt body (Latin-only fonts)."""
     doc = pymupdf.open()
     page = doc.new_page()
     y = 60

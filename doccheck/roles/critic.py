@@ -4,7 +4,6 @@ Tool loop with tool_choice="auto"; after `critic_max_iters` rounds the call is f
 """
 from __future__ import annotations
 
-import asyncio
 import json
 from typing import Any
 
@@ -18,13 +17,13 @@ from ..rag.qdrant_store import Hit
 
 TOOL_HIT_CHARS = 1600
 
-SEARCH_TOOL = tool_spec("search_corpus", "Hybrid (dense + BM25) search over the review corpus. "
-                        "source='target' searches the paper under review, 'related' the literature; omit for both.", {
+SEARCH_TOOL = tool_spec("search_corpus", "Hybrid (dense + BM25) search over the company's sources "
+                        "(tariffs, offer, SLA, policies). Use it to look for evidence the analyst did not see, "
+                        "especially evidence that contradicts the claim or limits its scope.", {
     "type": "object",
     "properties": {
-        "query": {"type": "string", "description": "Natural-language or keyword query"},
+        "query": {"type": "string", "description": "Natural-language or keyword query, in Russian"},
         "k": {"type": "integer", "minimum": 1, "maximum": 8, "description": "Number of chunks (<= 8)"},
-        "source": {"type": "string", "enum": ["target", "related"]},
     },
     "required": ["query"],
 })
@@ -58,12 +57,11 @@ async def _run_tool(ctx: RunCtx, name: str, args: dict[str, Any], claim: Claim,
     if name == "search_corpus":
         query = str(args.get("query") or claim.text)
         k = max(1, min(int(args.get("k") or 6), 8))
-        source = args.get("source") if args.get("source") in ("target", "related") else None
-        clean = {"query": query, "k": k, "source": source}
+        clean = {"query": query, "k": k}
         ctx.bus.emit("tool.call", {"role": "critic", "name": name, "args": clean,
-                                   "summary": f"search_corpus({query!r}, k={k}, source={source})"},
+                                   "summary": f"search_corpus({query!r}, k={k})"},
                      role="critic", claim_id=claim.id)
-        hits = await ctx.search(query, k, source, "critic", claim.id)
+        hits = await ctx.search(query, k, "corpus", "critic", claim.id)
         for h in hits:
             surfaced[h.chunk_id] = h
         ctx.bus.emit("tool.result", {"role": "critic", "name": name, "args": clean, "summary": _summary_hits(hits)},
@@ -73,7 +71,7 @@ async def _run_tool(ctx: RunCtx, name: str, args: dict[str, Any], claim: Claim,
         cid = str(args.get("chunk_id") or "")
         ctx.bus.emit("tool.call", {"role": "critic", "name": name, "args": {"chunk_id": cid},
                                    "summary": f"get_chunk({cid})"}, role="critic", claim_id=claim.id)
-        hit = await asyncio.to_thread(ctx.store.get_chunk, ctx.run_id, cid)
+        hit = await ctx.chunk(cid)
         if hit:
             surfaced[hit.chunk_id] = hit
         ctx.bus.emit("tool.result", {"role": "critic", "name": name, "args": {"chunk_id": cid},
@@ -88,9 +86,9 @@ async def critique(ctx: RunCtx, claim: Claim, verdict: AnalystVerdict, grounding
     max_iters = ctx.params.critic_max_iters
     system, user = load_prompt(
         "critic", max_iters=max_iters, claim_id=claim.id, claim_type=claim.type.value,
-        claim_section=claim.section, claim_text=claim.text, round=round_,
+        claim_text=claim.text, claim_quote=claim.quote, document_title=ctx.title, round=round_,
         verdict=jsonish(verdict.model_dump(mode="json")), grounding=jsonish(grounding),
-        context_ids="\n".join(f"- {h.chunk_id} ({h.payload.get('source')}: {h.payload.get('title')})" for h in hits))
+        context_ids="\n".join(f"- {h.chunk_id} ({h.payload.get('title')} / {h.payload.get('section')})" for h in hits))
     model = ctx.settings.critic_model
     ctx.bus.emit("agent.started", {"role": "critic", "claim_id": claim.id, "round": round_, "model": model},
                  role="critic", claim_id=claim.id)

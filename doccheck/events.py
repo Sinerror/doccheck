@@ -1,4 +1,4 @@
-"""Event contract backend ↔ frontend (SPEC §6).
+"""Event contract backend ↔ frontend.
 
 Every event is `{seq, ts, run_id, type, role?, claim_id?, data}`, appended to
 `runs/{run_id}/events.jsonl` and fanned out to live SSE subscribers.
@@ -16,7 +16,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 Role = Literal["scout", "analyst", "critic", "system"]
-StageName = Literal["ingest", "scout", "index", "analyze", "report"]
+StageName = Literal["ingest", "scout", "analyze", "report"]
 
 
 class Event(BaseModel):
@@ -44,30 +44,16 @@ class StageEvent(BaseModel):
 
 class ScoutClaims(BaseModel):
     claims: list[dict[str, Any]]
-
-
-class ScoutQuery(BaseModel):
-    query: str
-    source: Literal["openalex", "arxiv"]
-    claim_id: str | None = None
-    hits: int | None = None
-
-
-class ScoutPaperFound(BaseModel):
-    paper_id: str
-    title: str
-    year: int | None = None
-    venue: str | None = None
-    url: str | None = None
-    relevance: float | None = None
+    reused: bool = False  # claims replayed from an earlier run (eval of analyst models)
 
 
 class RagIndexed(BaseModel):
-    paper_id: str
+    doc_id: str
     chunks: int
     total_points: int
-    source: Literal["target", "related"]
+    source: Literal["corpus", "document"]
     title: str | None = None
+    reused: bool = False  # corpus already indexed under the same content hash
 
 
 class RagRetrieval(BaseModel):
@@ -136,6 +122,7 @@ class ClaimFinal(BaseModel):
     claim_id: str
     status: Literal["accepted", "revised", "disputed"]
     verdict: str
+    correction: str | None = None
     history: list[dict[str, Any]]
 
 
@@ -163,8 +150,6 @@ EVENT_DATA_MODELS: dict[str, type[BaseModel]] = {
     "stage.started": StageEvent,
     "stage.finished": StageEvent,
     "scout.claims": ScoutClaims,
-    "scout.query": ScoutQuery,
-    "scout.paper_found": ScoutPaperFound,
     "rag.indexed": RagIndexed,
     "rag.retrieval": RagRetrieval,
     "agent.started": AgentStarted,

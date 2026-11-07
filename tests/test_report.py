@@ -1,6 +1,6 @@
 import pytest
 
-from doccheck.report import aggregate, claim_score, debate_status, is_blocking, max_severity, render_markdown
+from doccheck.report import aggregate, debate_status, is_blocking, max_severity, render_markdown, review_reasons
 
 
 def R(stance, sev=None):
@@ -33,38 +33,47 @@ def test_blocking_and_severity():
     assert is_blocking("CHALLENGE", "medium")
 
 
-def test_claim_score_formula():
-    assert claim_score("SUPPORTED", "accepted", None) == 1.0
-    assert claim_score("SUPPORTED", "disputed", "OVERSTATED") == 0.7
-    assert claim_score("CONTRADICTED", "revised", "SUPPORTED") == 0.0  # only disputed claims blend
+def _claim(cid, verdict, status, issues=(), suggested=None, confidence=0.9, grounded=True, correction=None):
+    return {"id": cid, "text": f"утверждение {cid}", "quote": f"Предложение {cid}.", "type": "number",
+            "verdict": verdict, "status": status, "confidence": confidence, "critic_suggested": suggested,
+            "correction": correction,
+            "history": [{"round": 0, "analyst": {"verdict": verdict, "reasoning": "r", "confidence": confidence,
+                                                 "evidence": [{"chunk_id": "a#0", "quote": "q", "stance": "supports"}],
+                                                 "concerns": []},
+                         "grounding": [{"ok": grounded, "score": 100 if grounded else 40}],
+                         "critic": {"stance": "AGREE", "reasoning": "ok", "issues": list(issues),
+                                    "suggested_verdict": suggested}}]}
 
 
-def _claim(cid, verdict, status, issues=(), suggested=None):
-    return {"id": cid, "text": f"claim {cid}", "type": "empirical", "section": "Results", "verdict": verdict,
-            "status": status, "confidence": 0.7, "critic_suggested": suggested,
-            "history": [{"round": 0, "analyst": {"verdict": verdict, "reasoning": "r", "confidence": 0.7,
-                                                 "evidence": [], "concerns": []},
-                         "grounding": [], "critic": {"stance": "AGREE", "reasoning": "ok", "issues": list(issues),
-                                                     "suggested_verdict": suggested}}]}
+def test_review_rule():
+    assert review_reasons(_claim("C1", "SUPPORTED", "accepted")) == []
+    assert review_reasons(_claim("C2", "CONTRADICTED", "accepted")) == ["противоречит источникам"]
+    assert "аналитик и критик не согласились" in review_reasons(_claim("C3", "SUPPORTED", "disputed"))
+    assert any("низкая" in r for r in review_reasons(_claim("C4", "SUPPORTED", "accepted", confidence=0.4)))
+    assert "цитата не прошла проверку" in review_reasons(_claim("C5", "SUPPORTED", "accepted", grounded=False))
 
 
 def test_aggregate_and_markdown():
     claims = [
         _claim("C1", "SUPPORTED", "accepted"),
-        _claim("C2", "OVERSTATED", "revised", [{"type": "overclaim", "severity": "high", "detail": "d"}]),
-        _claim("C3", "SUPPORTED", "disputed", [{"type": "missed_contradiction", "severity": "medium", "detail": "d"},
+        _claim("C2", "CONTRADICTED", "revised", [{"type": "missed_contradiction", "severity": "high", "detail": "d"}],
+               correction="Срок возврата — 14 календарных дней."),
+        _claim("C3", "SUPPORTED", "disputed", [{"type": "outdated_source", "severity": "medium", "detail": "d"},
                                                {"type": "overclaim", "severity": "low", "detail": "d"}], "CONTRADICTED"),
+        _claim("C4", "UNVERIFIABLE", "accepted"),
     ]
     checks = [{"ok": True, "by_role": "analyst"}, {"ok": False, "by_role": "analyst"}, {"ok": True, "by_role": "critic"}]
     agg = aggregate(claims, checks)
-    assert agg["status_counts"] == {"accepted": 1, "revised": 1, "disputed": 1}
-    assert agg["verdict_counts"] == {"SUPPORTED": 2, "OVERSTATED": 1}
-    assert agg["critic_issues"]["by_type"] == {"overclaim": 2, "missed_contradiction": 1}
+    assert agg["status_counts"] == {"accepted": 2, "revised": 1, "disputed": 1}
+    assert agg["verdict_counts"] == {"SUPPORTED": 2, "CONTRADICTED": 1, "UNVERIFIABLE": 1}
+    assert agg["critic_issues"]["by_type"] == {"missed_contradiction": 1, "outdated_source": 1, "overclaim": 1}
     assert agg["grounding"]["rate"] == round(2 / 3, 4)
-    assert agg["grounding"]["by_role"]["analyst"] == {"checks": 2, "ok": 1}
-    # (1.0 + 0.4 + (1.0+0.0)/2) / 3 * 10 = 6.33
-    assert agg["review_score"] == 6.3
-    report = {"run_id": "t", "target": {"title": "T", "url": "u"}, "models": {"analyst": "m"}, "aggregate": agg,
-              "meta_review": "meta", "claims": claims, "papers": [], "metrics": {}}
+    assert agg["needs_review"]["count"] == 3 and agg["needs_review"]["share"] == 0.75
+    assert set(agg["needs_review"]["claims"]) == {"C2", "C3", "C4"}
+    report = {"run_id": "t", "target": {"title": "Ответ клиенту", "filename": "a.md", "chars": 900, "pages": 0.5},
+              "models": {"analyst": "m"}, "aggregate": agg, "summary": "Есть ошибка в сроке возврата.",
+              "claims": claims, "metrics": {"cost_usd": 0.1, "llm_calls": 9, "elapsed_s": 30}, "corpus": {}}
     md = render_markdown(report)
-    assert "review_score: 6.3" in md and "### C3 · DISPUTED" in md and "Both positions shown" in md
+    assert "Требуют внимания человека: 3 из 4" in md
+    assert "по источникам: Срок возврата — 14 календарных дней." in md
+    assert "## Не найдено в источниках" in md and "**Спорное.**" in md

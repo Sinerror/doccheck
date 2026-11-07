@@ -1,14 +1,24 @@
-"""Planted-error eval (SPEC §10).
+"""Planted-error eval: run DocCheck over data/eval/docs and score it against data/eval/labels.json.
 
-Takes a real paper (default 1706.03762), plants three errors into its text, runs the full pipeline on the
-altered text and measures, per planted error:
-  * extracted   — did Scout turn the planted statement into a claim at all;
-  * analyst     — did the analyst's first verdict (round 0) flag it;
-  * critic-only — caught only because the critic challenged a verdict the analyst had let through;
-  * final       — is it flagged in the final result (final verdict, or the critic's position on a disputed claim).
-Plus false positives on the non-planted claims and grounding_rate. Writes evals/results.md (+ a JSON dump).
+    uv run python scripts/eval_planted.py --label full                       # full pipeline, ~$4-6
+    uv run python scripts/eval_planted.py --label analyst-only --no-critic --reuse-claims <eval id>
+    DOCCHECK_ANALYST_BASE_URL=http://127.0.0.1:1234/v1 DOCCHECK_ANALYST_MODEL=<local model> \
+        uv run python scripts/eval_planted.py --label local-analyst --no-critic --reuse-claims <eval id>
+    uv run python scripts/eval_planted.py --rescore                           # only re-render evals/results.md
 
-    uv run python scripts/eval_planted.py [--arxiv 1706.03762] [--max-claims 6] [--max-papers 10]
+`--reuse-claims` feeds the Scout's claims from an earlier eval run back in, so two analyst models are compared
+on exactly the same claims (and the comparison costs nothing for the Scout).
+
+Matching: every claim carries `quote`, the sentence of the document it came from. A claim is matched to the
+labelled sentence with the best fuzzy score (≥ MATCH_THRESHOLD); unmatched claims are "extra".
+
+Scoring (per planted error, over all claims matched to it):
+  caught (strict)    final verdict ∈ expected, or the claim is disputed and the critic suggests a verdict ∈ expected
+  flagged for human  the claim is in the report's needs_review list (the business outcome: a person looks at it)
+  analyst r0         the analyst's first verdict ∈ expected (before any debate)
+  critic-only        caught (strict) but not by analyst r0
+False positives: claims matched to a correct sentence (or extra) whose final verdict is CONTRADICTED / OVERSTATED
+(strict) or that are sent to a human (review).
 """
 from __future__ import annotations
 
@@ -17,326 +27,341 @@ import asyncio
 import hashlib
 import json
 import re
+import statistics
 import sys
 import time
-from dataclasses import dataclass
 from pathlib import Path
-
-import httpx
-from qdrant_client import QdrantClient
-from rapidfuzz import fuzz
+from typing import Any
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from doccheck.config import get_settings  # noqa: E402
-from doccheck.context import RunParams  # noqa: E402
-from doccheck.events import EventBus  # noqa: E402
-from doccheck.orchestrator import run_pipeline  # noqa: E402
-from doccheck.rag.qdrant_store import QdrantStore  # noqa: E402
-from doccheck.sources import arxiv  # noqa: E402
-from doccheck.sources.pdf import ParsedPDF, parse_pdf  # noqa: E402
+from rapidfuzz import fuzz  # noqa: E402
 
-STRICT = {"CONTRADICTED", "OVERSTATED"}
+EVALS = ROOT / "evals"
+LABELS = ROOT / "data" / "eval" / "labels.json"
+DOCS = ROOT / "data" / "eval" / "docs"
+MATCH_THRESHOLD = 80
+STRICT_FP = {"CONTRADICTED", "OVERSTATED"}
+KIND_RU = {"number": "неверное число", "deadline": "неверный срок/дата", "condition": "изменённое условие",
+           "object_swap": "свойство другого тарифа/региона", "outdated": "из архивной редакции",
+           "overstatement": "преувеличение", "not_in_sources": "нет в источниках",
+           "wrong_clause": "неверная ссылка на пункт"}
+
+
+def norm(s: str) -> str:
+    s = s.replace("ё", "е").replace("Ё", "Е").replace("«", '"').replace("»", '"').replace(" ", " ")
+    return re.sub(r"\s+", " ", s).strip().lower()
+
+
+def match_score(claim: dict[str, Any], label_text: str) -> float:
+    lt = norm(label_text)
+    q = norm(claim.get("quote") or "")
+    t = norm(claim.get("text") or "")
+    scores = [fuzz.token_set_ratio(t, lt)]
+    if q:
+        scores += [fuzz.ratio(q, lt), fuzz.partial_ratio(lt, q) if len(q) >= len(lt) * 0.6 else 0]
+    return max(scores)
+
+
+def assign(claims: list[dict[str, Any]], labels: list[dict[str, Any]]) -> dict[str, str | None]:
+    """claim id → label id (or None)."""
+    out: dict[str, str | None] = {}
+    for c in claims:
+        best, best_s = None, 0.0
+        for lab in labels:
+            s = match_score(c, lab["text"])
+            if s > best_s:
+                best, best_s = lab["id"], s
+        out[c["id"]] = best if best_s >= MATCH_THRESHOLD else None
+    return out
+
+
+def _r0(c: dict[str, Any]) -> str:
+    return c["history"][0]["analyst"]["verdict"]
+
+
+def caught_strict(c: dict[str, Any], expected: list[str]) -> bool:
+    if c["verdict"] in expected:
+        return True
+    return c.get("status") == "disputed" and c.get("critic_suggested") in expected
+
+
+def score_doc(report: dict[str, Any], doc_labels: dict[str, Any]) -> dict[str, Any]:
+    claims = report["claims"]
+    review = set((report["aggregate"].get("needs_review") or {}).get("claims", {}))
+    planted = doc_labels["planted"]
+    clean = doc_labels["clean"]
+    by_id = {lab["id"]: lab for lab in planted + clean}
+    amap = assign(claims, planted + clean)
+    rows = []
+    for p in planted:
+        cs = [c for c in claims if amap.get(c["id"]) == p["id"]]
+        exp = p["expected"]
+        rows.append({
+            "id": p["id"], "kind": p["kind"], "text": p["text"], "expected": exp,
+            "claims": [c["id"] for c in cs], "extracted": bool(cs),
+            "r0": [_r0(c) for c in cs], "final": [c["verdict"] for c in cs],
+            "status": [c["status"] for c in cs], "critic_suggested": [c.get("critic_suggested") for c in cs],
+            "caught": any(caught_strict(c, exp) for c in cs),
+            "caught_r0": any(_r0(c) in exp for c in cs),
+            "flagged": any(c["id"] in review for c in cs),
+        })
+    for r in rows:
+        r["critic_only"] = r["caught"] and not r["caught_r0"]
+    others = []
+    for c in claims:
+        lab = amap.get(c["id"])
+        if lab is not None and lab in {p["id"] for p in planted}:
+            continue
+        others.append({"claim": c["id"], "label": lab, "text": c["text"], "kind": "clean" if lab else "extra",
+                       "r0": _r0(c), "final": c["verdict"], "status": c["status"],
+                       "fp_strict": c["verdict"] in STRICT_FP, "fp_review": c["id"] in review})
+    clean_extracted = {o["label"] for o in others if o["label"]}
+    return {"doc": doc_labels["file"], "run_id": report["run_id"], "rows": rows, "others": others,
+            "clean_total": len(clean), "clean_extracted": len(clean_extracted),
+            "grounding": report["aggregate"]["grounding"], "metrics": report["metrics"],
+            "claims": len(claims), "claim_errors": len(report.get("claim_errors") or []),
+            "labels_seen": sorted(by_id)}
+
+
+def summarize(docs: list[dict[str, Any]]) -> dict[str, Any]:
+    rows = [r for d in docs for r in d["rows"]]
+    others = [o for d in docs for o in d["others"]]
+    clean = [o for o in others if o["kind"] == "clean"]
+    n = len(rows) or 1
+
+    def share(xs, key):
+        return round(sum(1 for x in xs if x[key]) / len(xs), 3) if xs else None
+
+    kinds: dict[str, dict[str, Any]] = {}
+    for r in rows:
+        k = kinds.setdefault(r["kind"], {"n": 0, "caught": 0, "flagged": 0, "caught_r0": 0, "extracted": 0})
+        k["n"] += 1
+        for f in ("caught", "flagged", "caught_r0", "extracted"):
+            k[f] += int(r[f])
+    g_ok = sum(d["grounding"]["ok"] for d in docs)
+    g_n = sum(d["grounding"]["checks"] for d in docs)
+    cost = sum(d["metrics"]["cost_usd"] for d in docs)
+    return {
+        "docs": len(docs), "planted": len(rows), "claims": sum(d["claims"] for d in docs),
+        "extracted": round(sum(r["extracted"] for r in rows) / n, 3),
+        "recall_strict": round(sum(r["caught"] for r in rows) / n, 3),
+        "recall_flagged": round(sum(r["flagged"] for r in rows) / n, 3),
+        "recall_r0": round(sum(r["caught_r0"] for r in rows) / n, 3),
+        "critic_only": sum(r["critic_only"] for r in rows),
+        "clean_claims": len(clean), "fp_strict_clean": share(clean, "fp_strict"), "fp_review_clean": share(clean, "fp_review"),
+        "extra_claims": len(others) - len(clean),
+        "fp_strict_all": share(others, "fp_strict"), "fp_review_all": share(others, "fp_review"),
+        "grounding_rate": round(g_ok / g_n, 4) if g_n else None, "grounding": f"{g_ok}/{g_n}",
+        "cost_usd": round(cost, 4), "cost_per_doc": round(cost / max(len(docs), 1), 4),
+        "elapsed_s": round(sum(d["metrics"]["elapsed_s"] for d in docs), 1),
+        "llm_calls": sum(d["metrics"]["llm_calls"] for d in docs),
+        "claim_errors": sum(d["claim_errors"] for d in docs),
+        "by_kind": kinds,
+    }
 
 
 def prompts_hash() -> str:
     h = hashlib.sha1()
-    for f in sorted((ROOT / "doccheck" / "prompts").glob("*.md")):
-        h.update(f.read_bytes())
+    for p in sorted((ROOT / "doccheck" / "prompts").glob("*.md")):
+        h.update(p.read_bytes())
     return h.hexdigest()[:8]
 
 
-@dataclass
-class Plant:
-    id: str
-    kind: str
-    statement: str
-    edits: list[tuple[str, str, str]]  # (section prefix, original substring, replacement)
-    markers: list[list[str]]           # a claim matches if it contains every marker of any one group
-    fuzzy: bool = True                 # also accept partial_ratio >= 85 against the planted sentence
+# ---- running ----------------------------------------------------------------------------------------------
+
+async def run_eval(args: argparse.Namespace) -> Path:
+    from qdrant_client import QdrantClient
+
+    from doccheck.config import get_settings
+    from doccheck.context import RunParams
+    from doccheck.events import EventBus
+    from doccheck.models import Claim
+    from doccheck.orchestrator import run_pipeline
+    from doccheck.rag.qdrant_store import QdrantStore
+    from doccheck.sources.local import load_file
+
+    s = get_settings()
+    labels = json.loads(LABELS.read_text(encoding="utf-8"))
+    docs = [d for d in labels["docs"] if not args.docs or any(d["file"].startswith(x) for x in args.docs)]
+    eval_id = f"eval-{time.strftime('%Y%m%d-%H%M%S')}-{args.label}"
+    out_dir = EVALS / "runs" / eval_id
+    out_dir.mkdir(parents=True, exist_ok=True)
+    store = QdrantStore(QdrantClient(url=s.qdrant_url, api_key=s.qdrant_api_key, timeout=60), s.collection)
+    store.ensure_collection()
+    params = RunParams(max_claims=args.max_claims, debate_rounds=args.debate_rounds, use_critic=not args.no_critic)
+    sem = asyncio.Semaphore(args.concurrency)
+    scored: list[dict[str, Any]] = []
+    spent = 0.0
+
+    async def one(d: dict[str, Any]) -> None:
+        nonlocal spent
+        async with sem:
+            if args.budget and spent >= args.budget:
+                print(f"  skip {d['file']}: budget ${args.budget} reached", flush=True)
+                return
+            run_id = f"{eval_id}-{d['file'][:3]}"
+            claims_override = None
+            if args.reuse_claims:
+                src = EVALS / "runs" / args.reuse_claims / "claims" / f"{d['file']}.json"
+                claims_override = [Claim.model_validate(c) for c in json.loads(src.read_text(encoding="utf-8"))]
+            bus = EventBus(run_id, s.runs_dir / run_id / "events.jsonl")
+            report = await run_pipeline(run_id=run_id, settings=s, store=store, bus=bus,
+                                        doc=load_file(DOCS / d["file"]), filename=d["file"], params=params,
+                                        write_summary=False, claims_override=claims_override)
+            if report is None:
+                err = (s.runs_dir / run_id / "error.txt")
+                print(f"  FAILED {d['file']}: {err.read_text(encoding='utf-8')[-400:] if err.exists() else ''}",
+                      flush=True)
+                if "401" in str(err.read_text(encoding="utf-8") if err.exists() else "") or \
+                        "402" in str(err.read_text(encoding="utf-8") if err.exists() else ""):
+                    raise SystemExit("LLM endpoint refused the key (401/402): stopping the eval")
+                return
+            (out_dir / "claims").mkdir(exist_ok=True)
+            (out_dir / "claims" / f"{d['file']}.json").write_text(json.dumps(
+                [{k: c[k] for k in ("id", "text", "type", "quote", "section")} for c in report["claims"]],
+                ensure_ascii=False, indent=1), encoding="utf-8")
+            sd = score_doc(report, d)
+            scored.append(sd)
+            spent += report["metrics"]["cost_usd"]
+            caught = sum(r["caught"] for r in sd["rows"])
+            print(f"  {d['file']}: {caught}/{len(sd['rows'])} caught · {len(report['claims'])} claims · "
+                  f"${report['metrics']['cost_usd']:.3f} · total ${spent:.2f}", flush=True)
+
+    await asyncio.gather(*(one(d) for d in docs))
+    scored.sort(key=lambda x: x["doc"])
+    result = {"eval_id": eval_id, "label": args.label, "created_at": time.strftime("%Y-%m-%d %H:%M"),
+              "prompts": prompts_hash(), "models": s.models(), "embed_model": store.dense_model,
+              "params": vars(params), "reuse_claims": args.reuse_claims,
+              "summary": summarize(scored), "docs": scored}
+    path = EVALS / f"{eval_id}.json"
+    path.write_text(json.dumps(result, ensure_ascii=False, indent=1), encoding="utf-8")
+    return path
 
 
-# Planted into the Abstract (which Scout reads) and into the body, so the error is consistent across the text.
-PLANTS_1706 = [
-    Plant(
-        id="A",
-        kind="distorted number in results",
-        statement="Our model achieves 31.7 BLEU on the WMT 2014 English-to-German translation task, improving over "
-                  "the existing best results, including ensembles, by over 5 BLEU.",
-        edits=[
-            ("Abstract", "Our model achieves 28.4 BLEU", "Our model achieves 31.7 BLEU"),
-            ("Abstract", "including ensembles, by over 2 BLEU", "including ensembles, by over 5 BLEU"),
-            ("6.1", "by more than 2 . 0 BLEU, establishing a new state-of-the-art BLEU score of 28 . 4",
-             "by more than 5 . 0 BLEU, establishing a new state-of-the-art BLEU score of 31 . 7"),
-        ],
-        markers=[["31.7"], ["5 bleu"]],
-        fuzzy=False,  # an untouched "28.4 BLEU" claim is textually near-identical; only the planted numbers count
-    ),
-    Plant(
-        id="B",
-        kind="false 'we are the first to…'",
-        statement="We are the first to apply attention mechanisms to neural machine translation.",
-        edits=[
-            ("Abstract", "dispensing with recurrence and convolutions entirely.",
-             "dispensing with recurrence and convolutions entirely. We are the first to apply attention "
-             "mechanisms to neural machine translation."),
-            ("7 Conclusion", "with multi-headed self-attention.",
-             "with multi-headed self-attention. Ours is also the first work to apply attention mechanisms to "
-             "neural machine translation."),
-        ],
-        markers=[["first", "apply attention"], ["first", "attention mechanisms to neural machine translation"]],
-    ),
-    Plant(
-        id="C",
-        kind="fabricated statement about another work",
-        statement="The convolutional ConvS2S model of Gehring et al. fails to converge on WMT 2014 English-to-French "
-                  "without pre-training.",
-        edits=[
-            ("Abstract", "a small fraction of the training costs of the best models from the literature.",
-             "a small fraction of the training costs of the best models from the literature. By contrast, the "
-             "convolutional ConvS2S model of Gehring et al. fails to converge on WMT 2014 English-to-French "
-             "without pre-training."),
-            ("6.1", "outperforming all of the previously published single models,",
-             "outperforming all of the previously published single models (the ConvS2S model of Gehring et al. "
-             "fails to converge on this task without pre-training),"),
-        ],
-        markers=[["convs2s"], ["gehring"], ["fail", "converge"]],
-    ),
-]
+# ---- rendering -------------------------------------------------------------------------------------------
+
+def pct(x: float | None) -> str:
+    return "—" if x is None else f"{x:.0%}"
 
 
-def norm(t: str) -> str:
-    t = t.lower().replace("englishto", "english-to")
-    t = re.sub(r"(\d) \. (\d)", r"\1.\2", t)
-    return re.sub(r"\s+", " ", t)
+def mean_sd(xs: list[float]) -> str:
+    xs = [x for x in xs if x is not None]
+    if not xs:
+        return "—"
+    if len(xs) == 1:
+        return pct(xs[0])
+    return f"{statistics.mean(xs):.0%} ± {statistics.stdev(xs):.0%}"
 
 
-def apply_plants(parsed: ParsedPDF, plants: list[Plant]) -> ParsedPDF:
-    sections = list(parsed.sections)
-    for plant in plants:
-        for prefix, old, new in plant.edits:
-            idx = next((i for i, (s, t) in enumerate(sections) if s.startswith(prefix) and old in t), None)
-            if idx is None:
-                raise SystemExit(f"plant {plant.id}: {old!r} not found in a section starting with {prefix!r}")
-            name, text = sections[idx]
-            sections[idx] = (name, text.replace(old, new, 1))
-    return ParsedPDF(title=parsed.title, sections=sections, page_count=parsed.page_count)
-
-
-def matches(plant: Plant, claim_text: str) -> bool:
-    c = norm(claim_text)
-    if any(all(m in c for m in group) for group in plant.markers):
-        return True
-    return plant.fuzzy and fuzz.partial_ratio(norm(plant.statement), c) >= 85
-
-
-def critic_flagged(claim: dict) -> bool:
-    """Critic challenged with a medium/high issue and pointed at a strict verdict, in any round."""
-    for h in claim["history"]:
-        cr = h["critic"]
-        sev = {i["severity"] for i in cr["issues"]}
-        if cr["stance"] == "CHALLENGE" and sev & {"medium", "high"} and cr.get("suggested_verdict") in STRICT:
-            return True
-    return False
-
-
-def evaluate(report: dict, plants: list[Plant]) -> dict:
-    claims = report["claims"]
-    rows, planted_ids = [], set()
-    for plant in plants:
-        hit = [c for c in claims if matches(plant, c["text"])]
-        planted_ids |= {c["id"] for c in hit}
-        row = {"plant": plant.id, "kind": plant.kind, "statement": plant.statement,
-               "claims": [c["id"] for c in hit], "extracted": bool(hit)}
-        if hit:
-            c = hit[0]
-            r0 = c["history"][0]["analyst"]["verdict"]
-            final = c["verdict"]
-            final_flag = final in STRICT or (c["status"] == "disputed" and c.get("critic_suggested") in STRICT)
-            analyst = r0 in STRICT
-            row.update({
-                "claim_text": c["text"], "analyst_r0": r0, "final_verdict": final, "status": c["status"],
-                "critic_suggested": c.get("critic_suggested"),
-                "rounds": [{"analyst": h["analyst"]["verdict"], "critic": h["critic"]["stance"],
-                            "issues": [f"{i['severity']}:{i['type']}" for i in h["critic"]["issues"]]}
-                           for h in c["history"]],
-                "caught_by_analyst": analyst,
-                "caught_by_critic_only": (not analyst) and (critic_flagged(c) or final_flag),
-                "caught_final": final_flag,
-                "caught_any": analyst or critic_flagged(c) or final_flag,
-                "loose_flag": final != "SUPPORTED" or r0 != "SUPPORTED",
-                # critic moved an analyst SUPPORTED to something weaker (or holds a weaker position on a dispute)
-                "critic_loose": r0 == "SUPPORTED" and (final != "SUPPORTED" or (
-                    c["status"] == "disputed" and c.get("critic_suggested") not in (None, "SUPPORTED"))),
-            })
-        else:
-            row.update({"caught_by_analyst": False, "caught_by_critic_only": False, "caught_final": False,
-                        "caught_any": False, "loose_flag": False, "critic_loose": False})
-        rows.append(row)
-    others = [c for c in claims if c["id"] not in planted_ids]
-    n = len(plants)
-    return {
-        "rows": rows,
-        "recall_extracted": sum(r["extracted"] for r in rows) / n,
-        "recall_any": sum(r["caught_any"] for r in rows) / n,
-        "recall_analyst": sum(r["caught_by_analyst"] for r in rows) / n,
-        "recall_final": sum(r["caught_final"] for r in rows) / n,
-        "critic_only": sum(r["caught_by_critic_only"] for r in rows),
-        "critic_loose": sum(r["critic_loose"] for r in rows),
-        "recall_loose": sum(r["loose_flag"] for r in rows) / n,
-        "others": [{"id": c["id"], "text": c["text"], "verdict": c["verdict"], "status": c["status"],
-                    "analyst_r0": c["history"][0]["analyst"]["verdict"]} for c in others],
-        "fp_strict": sum(c["verdict"] in STRICT for c in others),
-        "fp_loose": sum(c["verdict"] != "SUPPORTED" for c in others),
-        "n_others": len(others),
-        "grounding": report["aggregate"]["grounding"],
-        "run_id": report.get("run_id"),
-        "cost_usd": (report.get("metrics") or {}).get("cost_usd"),
-        "models": report.get("models"),
-    }
-
-
-def pct(x: float) -> str:
-    return f"{100 * x:.0f}%"
-
-
-def write_markdown(path: Path, ev: dict, report: dict, args, run_id: str) -> None:
-    m = report["metrics"]
-    L = [
-        "# Planted-error eval",
-        "",
-        f"Paper: **{report['target']['title']}** (arXiv {args.arxiv}) with 3 planted errors · run `{run_id}` · "
-        f"{time.strftime('%Y-%m-%d')}",
-        "",
-        f"Models: " + ", ".join(f"{k}=`{v}`" for k, v in report["models"].items())
-        + " · params: " + ", ".join(f"{k}={report['params'][k]}" for k in ("max_claims", "max_papers", "debate_rounds")),
-        f"Cost ≈ ${m['cost_usd']:.3f} (router price estimate) · {m['llm_calls']} LLM calls · {m['elapsed_s']:.0f} s",
-        "",
-        "## Summary",
-        "",
-        "| metric | value |",
-        "|---|---|",
-        f"| planted errors extracted as claims (Scout) | {pct(ev['recall_extracted'])} |",
-        f"| **recall, any role** (analyst r0 or critic flagged CONTRADICTED/OVERSTATED) | **{pct(ev['recall_any'])}** |",
-        f"| recall, analyst alone (round 0) | {pct(ev['recall_analyst'])} |",
-        f"| caught only thanks to the critic (strict) | {ev['critic_only']} of {len(ev['rows'])} |",
-        f"| critic weakened an analyst SUPPORTED on a planted error (loose) | {ev.get('critic_loose', 0)} of {len(ev['rows'])} |",
-        f"| recall in the final report (final verdict, or critic position on a disputed claim) | {pct(ev['recall_final'])} |",
-        f"| loose recall (any verdict ≠ SUPPORTED) | {pct(ev['recall_loose'])} |",
-        f"| false positives on {ev['n_others']} non-planted claims, strict (CONTRADICTED/OVERSTATED) | {ev['fp_strict']} |",
-        f"| false positives, loose (≠ SUPPORTED) | {ev['fp_loose']} |",
-        f"| grounding_rate | {pct(ev['grounding']['rate'] or 0)} ({ev['grounding']['ok']}/{ev['grounding']['checks']}) |",
-        "",
-        "## Planted errors",
-        "",
-        "| # | kind | claim | analyst r0 | debate | final | status | caught by |",
-        "|---|---|---|---|---|---|---|---|",
-    ]
-    for r in ev["rows"]:
-        if not r["extracted"]:
-            L.append(f"| {r['plant']} | {r['kind']} | — not extracted — | | | | | missed (Scout) |")
-            continue
-        debate = " → ".join(f"{x['analyst']}/{x['critic']}" for x in r["rounds"])
-        who = ("analyst" if r["caught_by_analyst"] else "critic" if r["caught_by_critic_only"] else "—")
-        L.append(f"| {r['plant']} | {r['kind']} | {', '.join(r['claims'])}: {r['claim_text'][:110]}… | "
-                 f"{r['analyst_r0']} | {debate} | {r['final_verdict']} | {r['status']} | {who} |")
-    L += ["", "Planted statements:", ""]
-    for r in ev["rows"]:
-        L.append(f"- **{r['plant']}** ({r['kind']}): “{r['statement']}”")
-    L += ["", "## Non-planted claims (false-positive check)", "", "| claim | text | analyst r0 | final | status |",
-          "|---|---|---|---|---|"]
-    for c in ev["others"]:
-        L.append(f"| {c['id']} | {c['text'][:120]}… | {c['analyst_r0']} | {c['verdict']} | {c['status']} |")
-    L += ["", "## History of runs", "",
-          "Each row is one eval run (`evals/<run>.json`). `prompts` is a hash of `triad/prompts/*.md` at scoring time.", "",
-          "| run | prompts | extracted | recall strict | analyst r0 | critic-only | recall loose | FP strict | FP loose | grounding | cost |",
+def render(results: list[dict[str, Any]]) -> str:
+    lab = json.loads(LABELS.read_text(encoding="utf-8"))
+    L = ["# Planted-error eval", "",
+         f"Dataset: `data/eval/` — {lab['totals']['docs']} synthetic business documents (support replies, "
+         f"commercial proposals, an internal memo) with **{lab['totals']['planted']} planted errors** of 8 kinds and "
+         f"{lab['totals']['clean']} correct statements, checked against the synthetic corpus in `data/corpus/` "
+         "(tariffs RU/KZ, offer + archived offer, SLA, support, integrations, security, migration, features). "
+         "Built by `scripts/build_eval_set.py`.", ""]
+    if not results:
+        return "\n".join(L + ["_No eval runs yet._", ""])
+    by_label: dict[str, list[dict[str, Any]]] = {}
+    for r in results:
+        by_label.setdefault(r["label"], []).append(r)
+    L += ["## Summary by configuration", "",
+          "Mean ± sd over runs of the same configuration (stochastic models: each run is one sample).", "",
+          "| configuration | runs | analyst | recall strict | flagged for human | analyst r0 | caught only after debate | "
+          "FP strict (correct claims) | FP → human (correct claims) | grounding | $ / document |",
           "|---|---|---|---|---|---|---|---|---|---|---|"]
-    for f in sorted((ROOT / "evals").glob("eval-planted-*.json")):
-        h = json.loads(f.read_text(encoding="utf-8"))
-        L.append(f"| `{f.stem}` | `{h.get('prompts', '?')}` | {pct(h['recall_extracted'])} | {pct(h['recall_any'])} | "
-                 f"{pct(h['recall_analyst'])} | {h['critic_only']} | {pct(h['recall_loose'])} | {h['fp_strict']}/{h['n_others']} | "
-                 f"{h['fp_loose']}/{h['n_others']} | {pct(h['grounding']['rate'] or 0)} | "
-                 f"{'$%.3f' % h['cost_usd'] if h.get('cost_usd') is not None else '?'} |")
-    L += [
-        "",
-        "## Definitions and caveats",
-        "",
-        "- A claim is matched to a planted error by marker words (e.g. `31.7`, `ConvS2S`) or, for B and C, fuzzy "
-        "match ≥ 85 against the planted sentence (A uses only the planted numbers).",
-        "- *Strict* catch = CONTRADICTED or OVERSTATED. *Critic-only* = the analyst's round-0 verdict was not strict, "
-        "but the critic challenged with a medium/high issue suggesting a strict verdict, or the final verdict became strict.",
-        "- UNVERIFIABLE is the expected verdict for a fabricated statement about a paper that is not in the corpus "
-        "(C, when ConvS2S itself was not retrieved); it counts toward loose recall only.",
-        "- Run `eval-planted-20261019-135108` used the prompts before the evidence-standard fix (see DECISIONS.md: "
-        "a restatement of the claim in the same paper is not evidence); later runs use the fixed prompts.",
-        "- Non-planted claims are claims of the original paper; some are legitimately PARTIALLY_SUPPORTED (e.g. the "
-        "known 41.0 vs 41.8 BLEU inconsistency in v7), so the loose FP count is an upper bound.",
-        "- n = 1 paper × 1 run with stochastic models: these are real numbers from one run, not a benchmark. "
-        "Re-run the script to get another sample.",
-        "",
-    ]
-    path.write_text("\n".join(L), encoding="utf-8")
+    for label, rs in by_label.items():
+        S = [r["summary"] for r in rs]
+        L.append(f"| {label} | {len(rs)} | `{rs[-1]['models']['analyst']}` | {mean_sd([x['recall_strict'] for x in S])} | "
+                 f"{mean_sd([x['recall_flagged'] for x in S])} | {mean_sd([x['recall_r0'] for x in S])} | "
+                 f"{statistics.mean(x['critic_only'] for x in S):.1f} of {S[-1]['planted']} | "
+                 f"{mean_sd([x['fp_strict_clean'] for x in S])} | {mean_sd([x['fp_review_clean'] for x in S])} | "
+                 f"{mean_sd([x['grounding_rate'] for x in S])} | ${statistics.mean(x['cost_per_doc'] for x in S):.3f} |")
+    latest = max(results, key=lambda r: r["created_at"]) if results else None
+    full = [r for r in results if r["params"].get("use_critic")]
+    focus = max(full, key=lambda r: r["created_at"]) if full else latest
+    s = focus["summary"]
+    L += ["", f"## Latest full-pipeline run: `{focus['eval_id']}`", "",
+          f"Models: " + ", ".join(f"{k} = `{v}`" for k, v in focus["models"].items()) +
+          f" · embeddings `{focus['embed_model']}` · prompts `{focus['prompts']}` · "
+          f"max_claims={focus['params']['max_claims']}, debate_rounds={focus['params']['debate_rounds']}", "",
+          "| metric | value |", "|---|---|",
+          f"| planted errors extracted as claims (Scout) | {pct(s['extracted'])} |",
+          f"| **recall, strict** (right verdict, or critic's position on a disputed claim) | **{pct(s['recall_strict'])}** |",
+          f"| **recall, flagged for human** (error lands in the review list) | **{pct(s['recall_flagged'])}** |",
+          f"| recall, analyst alone (round 0) | {pct(s['recall_r0'])} |",
+          f"| caught only after the analyst ⇄ critic debate | {s['critic_only']} of {s['planted']} |",
+          f"| false positives on correct claims, strict (CONTRADICTED / OVERSTATED) | {pct(s['fp_strict_clean'])} of {s['clean_claims']} |",
+          f"| correct claims sent to a human anyway | {pct(s['fp_review_clean'])} |",
+          f"| extra claims (not labelled) | {s['extra_claims']} |",
+          f"| grounding rate (quotes verified by code) | {pct(s['grounding_rate'])} ({s['grounding']}) |",
+          f"| cost (router price estimate) | ${s['cost_usd']:.2f} total · ${s['cost_per_doc']:.3f} per document |",
+          f"| LLM calls / wall time (sum over documents) | {s['llm_calls']} / {s['elapsed_s']} s |", "",
+          "### Recall by error kind", "",
+          "| kind | n | extracted | caught strict | flagged for human | analyst r0 |", "|---|---|---|---|---|---|"]
+    for k, v in sorted(s["by_kind"].items(), key=lambda kv: -kv[1]["n"]):
+        L.append(f"| {k} ({KIND_RU.get(k, k)}) | {v['n']} | {v['extracted']} | {v['caught']} | {v['flagged']} | "
+                 f"{v['caught_r0']} |")
+    L += ["", "### Every planted error", "",
+          "| id | kind | planted statement | analyst r0 | final | status | caught |", "|---|---|---|---|---|---|---|"]
+    for d in focus["docs"]:
+        for r in d["rows"]:
+            mark = "✅" if r["caught"] else ("👁" if r["flagged"] else "—")
+            L.append(f"| {r['id']} | {r['kind']} | {r['text'][:110].replace('|', '/')} | {', '.join(r['r0']) or 'not extracted'} | "
+                     f"{', '.join(r['final'])} | {', '.join(r['status'])} | {mark} |")
+    fps = [(d["doc"], o) for d in focus["docs"] for o in d["others"] if o["fp_strict"]]
+    L += ["", "### False positives (strict) in that run", ""]
+    if not fps:
+        L.append("- none")
+    for doc, o in fps:
+        L.append(f"- `{doc}` {o['claim']} ({o['kind']}): «{o['text'][:140]}» → {o['final']} ({o['status']})")
+    L += ["", "## History", "", "| eval | label | analyst | prompts | recall strict | flagged | r0 | FP strict | grounding | cost |",
+          "|---|---|---|---|---|---|---|---|---|---|"]
+    for r in sorted(results, key=lambda r: r["created_at"]):
+        x = r["summary"]
+        L.append(f"| `{r['eval_id']}` | {r['label']} | `{r['models']['analyst']}` | `{r['prompts']}` | "
+                 f"{pct(x['recall_strict'])} | {pct(x['recall_flagged'])} | {pct(x['recall_r0'])} | "
+                 f"{pct(x['fp_strict_clean'])} | {pct(x['grounding_rate'])} | ${x['cost_usd']:.2f} |")
+    L += ["", "## Definitions and caveats", "",
+          "- *Strict* catch: the final verdict is one the label expects (CONTRADICTED/OVERSTATED for most kinds; "
+          "UNVERIFIABLE also counts for statements absent from the sources and for references to clauses that do not exist), "
+          "or the claim stayed disputed and the critic's suggested verdict is an expected one.",
+          "- *Flagged for human*: the claim is in the report's review list (verdict ≠ SUPPORTED, disputed, confidence < 0.6, "
+          "or a failed quote). This is what matters in production: the error does not leave the company unseen.",
+          "- Claims are matched to labelled sentences by the `quote` the Scout copies from the document (fuzzy ≥ 80).",
+          "- The dataset and the corpus are synthetic and were written by the author of the system: the numbers show how the "
+          "pipeline behaves on these error types, not a benchmark of real-world accuracy.",
+          "- Analyst-only rows reuse the Scout's claims of an earlier run (`--reuse-claims`), so analyst models are compared "
+          "on identical claims.", ""]
+    return "\n".join(L)
 
 
-def rescore(args) -> int:
-    """Re-score a finished eval run from runs/<id>/report.json (no LLM calls)."""
-    s = get_settings()
-    report = json.loads((s.runs_dir / args.rescore / "report.json").read_text(encoding="utf-8"))
-    ev = evaluate(report, PLANTS_1706)
-    ev["prompts"] = args.prompts or prompts_hash()
-    out_dir = ROOT / "evals"
-    out_dir.mkdir(exist_ok=True)
-    (out_dir / f"{args.rescore}.json").write_text(json.dumps(ev, indent=2, ensure_ascii=False), encoding="utf-8")
-    write_markdown(out_dir / "results.md", ev, report, args, args.rescore)
-    print(json.dumps({k: v for k, v in ev.items() if k not in ("rows", "others")}, indent=2))
-    return 0
+def load_results() -> list[dict[str, Any]]:
+    return [json.loads(p.read_text(encoding="utf-8")) for p in sorted(EVALS.glob("eval-*.json"))]
 
 
-async def main_async(args) -> int:
-    s = get_settings()
-    run_prompts = prompts_hash()  # hash the prompts the run actually used
-    async with httpx.AsyncClient(timeout=90) as http:
-        data = await arxiv.download_pdf(http, args.arxiv)
-    parsed = apply_plants(parse_pdf(data), PLANTS_1706)
-    run_id = args.run_id or f"eval-planted-{time.strftime('%Y%m%d-%H%M%S')}"
-    st = QdrantStore(QdrantClient(url=s.qdrant_url, api_key=s.qdrant_api_key, timeout=30), s.collection)
-    st.ensure_collection()
-    st.delete_run(run_id)
-    bus = EventBus(run_id, s.runs_dir / run_id / "events.jsonl")
-    params = RunParams(max_claims=args.max_claims, max_papers=args.max_papers, debate_rounds=args.debate_rounds)
-    report = await run_pipeline(run_id=run_id, settings=s, store=st, bus=bus, params=params,
-                                arxiv_id=args.arxiv, parsed=parsed)
-    if report is None:
-        print(f"run failed: see {s.runs_dir / run_id / 'error.txt'}", file=sys.stderr)
-        return 1
-    ev = evaluate(report, PLANTS_1706)
-    ev["prompts"] = run_prompts
-    out_dir = ROOT / "evals"
-    out_dir.mkdir(exist_ok=True)
-    (out_dir / f"{run_id}.json").write_text(json.dumps(ev, indent=2, ensure_ascii=False), encoding="utf-8")
-    write_markdown(out_dir / "results.md", ev, report, args, run_id)
-    print(json.dumps({k: v for k, v in ev.items() if k not in ("rows", "others")}, indent=2))
-    print(f"wrote {out_dir / 'results.md'}")
-    return 0
-
-
-def main() -> None:
+def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--arxiv", default="1706.03762")
-    ap.add_argument("--max-claims", type=int, default=6)
-    ap.add_argument("--max-papers", type=int, default=10)
+    ap.add_argument("--label", default="full")
+    ap.add_argument("--docs", nargs="*", help="file prefixes, e.g. d01 d02")
+    ap.add_argument("--max-claims", type=int, default=10)
     ap.add_argument("--debate-rounds", type=int, default=2)
-    ap.add_argument("--run-id", default=None)
-    ap.add_argument("--rescore", metavar="RUN_ID", help="re-score an existing eval run without calling the LLM")
-    ap.add_argument("--prompts", help="with --rescore: prompts hash the run was made with (default: current)")
+    ap.add_argument("--no-critic", action="store_true")
+    ap.add_argument("--reuse-claims", default=None, help="eval id whose Scout claims to reuse")
+    ap.add_argument("--concurrency", type=int, default=2, help="documents in parallel")
+    ap.add_argument("--budget", type=float, default=0.0, help="stop starting new documents after $X")
+    ap.add_argument("--rescore", action="store_true", help="only re-render evals/results.md")
     args = ap.parse_args()
-    if args.rescore:
-        raise SystemExit(rescore(args))
-    if args.arxiv != "1706.03762":
-        raise SystemExit("the planted edits are written against 1706.03762; add a PLANTS table for other papers")
-    raise SystemExit(asyncio.run(main_async(args)))
+    if not args.rescore:
+        path = asyncio.run(run_eval(args))
+        print(json.dumps(json.loads(path.read_text(encoding="utf-8"))["summary"], ensure_ascii=False, indent=1))
+    (EVALS / "results.md").write_text(render(load_results()), encoding="utf-8")
+    print(f"wrote {EVALS / 'results.md'}")
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

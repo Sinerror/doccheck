@@ -1,26 +1,19 @@
-"""Deterministic aggregation (SPEC §3, stage 4). The only LLM call here is the meta-review prose,
-and it only sees already-verified results. `review_score` is a transparent formula, not an LLM opinion."""
+"""Deterministic aggregation and the human-readable report. The only LLM call around here is the short
+summary prose, and it only sees already-verified results. What goes to a human is decided by a rule, not an LLM."""
 from __future__ import annotations
 
 from collections import Counter
 from typing import Any
 
-from .models import SEVERITY_RANK
+from .models import SEVERITY_RANK, VERDICT_RU
 
-VERDICT_WEIGHT = {
-    "SUPPORTED": 1.0,
-    "PARTIALLY_SUPPORTED": 0.6,
-    "UNVERIFIABLE": 0.5,
-    "OVERSTATED": 0.4,
-    "CONTRADICTED": 0.0,
-}
-
-SCORE_FORMULA = (
-    "claim_score = VERDICT_WEIGHT[final analyst verdict] "
-    "(SUPPORTED 1.0, PARTIALLY_SUPPORTED 0.6, UNVERIFIABLE 0.5, OVERSTATED 0.4, CONTRADICTED 0.0); "
-    "for a disputed claim with a critic-suggested verdict, claim_score = mean(analyst weight, critic weight); "
-    "review_score = round(10 * mean(claim_score), 1). grounding_rate is reported separately as a trust signal."
-)
+LOW_CONFIDENCE = 0.6
+VERDICT_ICON = {"SUPPORTED": "✅", "PARTIALLY_SUPPORTED": "🟡", "CONTRADICTED": "❌", "OVERSTATED": "🟠",
+                "UNVERIFIABLE": "❔"}
+STATUS_RU = {"accepted": "критик согласен", "revised": "пересмотрено после спора", "disputed": "спорное"}
+NEEDS_REVIEW_RULE = ("claim goes to a human if: final verdict ≠ SUPPORTED, or analyst and critic still disagree "
+                     f"(disputed), or confidence < {LOW_CONFIDENCE}, or a quote in the final verdict failed "
+                     "the grounding check")
 
 
 def max_severity(critique: dict[str, Any] | None) -> str | None:
@@ -47,15 +40,21 @@ def debate_status(rounds: list[dict[str, Any]]) -> str:
     return "disputed"
 
 
-def claim_score(final_verdict: str, status: str, critic_suggested: str | None) -> float:
-    w = VERDICT_WEIGHT.get(final_verdict, 0.5)
-    if status == "disputed" and critic_suggested in VERDICT_WEIGHT:
-        w = (w + VERDICT_WEIGHT[critic_suggested]) / 2
-    return round(w, 4)
+def review_reasons(c: dict[str, Any]) -> list[str]:
+    reasons = []
+    if c["verdict"] != "SUPPORTED":
+        reasons.append(VERDICT_RU[c["verdict"]])
+    if c.get("status") == "disputed":
+        reasons.append("аналитик и критик не согласились")
+    if (c.get("confidence") or 0) < LOW_CONFIDENCE:
+        reasons.append(f"низкая уверенность ({c.get('confidence')})")
+    last = (c.get("history") or [{}])[-1]
+    if any(not g.get("ok") for g in last.get("grounding") or []):
+        reasons.append("цитата не прошла проверку")
+    return reasons
 
 
 def aggregate(claims: list[dict[str, Any]], grounding_checks: list[dict[str, Any]]) -> dict[str, Any]:
-    """claims: [{id, status, verdict, critic_suggested, history:[{critic:{issues}}...]}]."""
     verdicts = Counter(c["verdict"] for c in claims)
     statuses = Counter(c["status"] for c in claims)
     issues_by_type: Counter[str] = Counter()
@@ -65,7 +64,7 @@ def aggregate(claims: list[dict[str, Any]], grounding_checks: list[dict[str, Any
             for i in (h.get("critic") or {}).get("issues") or []:
                 issues_by_type[i["type"]] += 1
                 issues_by_sev[i["severity"]] += 1
-    scores = [claim_score(c["verdict"], c["status"], c.get("critic_suggested")) for c in claims]
+    review = {c["id"]: r for c in claims if (r := review_reasons(c))}
     ok = sum(1 for g in grounding_checks if g["ok"])
     by_role: dict[str, dict[str, int]] = {}
     for g in grounding_checks:
@@ -73,11 +72,10 @@ def aggregate(claims: list[dict[str, Any]], grounding_checks: list[dict[str, Any
         r["checks"] += 1
         r["ok"] += int(g["ok"])
     return {
-        "review_score": round(10 * sum(scores) / len(scores), 1) if scores else None,
-        "score_formula": SCORE_FORMULA,
-        "claim_scores": {c["id"]: s for c, s in zip(claims, scores)},
         "verdict_counts": dict(verdicts),
         "status_counts": {k: statuses.get(k, 0) for k in ("accepted", "revised", "disputed")},
+        "needs_review": {"count": len(review), "share": round(len(review) / len(claims), 3) if claims else None,
+                         "claims": review, "rule": NEEDS_REVIEW_RULE},
         "grounding": {
             "rate": round(ok / len(grounding_checks), 4) if grounding_checks else None,
             "checks": len(grounding_checks), "ok": ok, "by_role": by_role,
@@ -87,86 +85,89 @@ def aggregate(claims: list[dict[str, Any]], grounding_checks: list[dict[str, Any
     }
 
 
+def _md(s: str | None) -> str:
+    return (s or "").replace("|", "\\|").replace("\n", " ").strip()
+
+
 def render_markdown(report: dict[str, Any]) -> str:
     t = report["target"]
     agg = report["aggregate"]
-    L: list[str] = []
-    L.append(f"# TRIAD review: {t.get('title')}")
-    L.append("")
-    L.append(f"- Paper: {t.get('url') or t.get('paper_id')}")
-    L.append(f"- Run: `{report['run_id']}` · models: " + ", ".join(f"{k}=`{v}`" for k, v in report["models"].items()))
-    L.append(f"- **review_score: {agg['review_score']} / 10** · grounding_rate: {agg['grounding']['rate']}"
-             f" ({agg['grounding']['ok']}/{agg['grounding']['checks']} quotes verified)")
-    sc = agg["status_counts"]
-    L.append(f"- Claims: {sc['accepted']} accepted · {sc['revised']} revised · {sc['disputed']} disputed")
     m = report.get("metrics") or {}
+    claims = report["claims"]
+    nr = agg["needs_review"]
+    L: list[str] = [f"# Проверка документа: {t.get('title')}", ""]
+    L.append(f"- Файл: `{t.get('filename')}` · {t.get('chars')} символов (~{t.get('pages')} стр.)")
+    L.append(f"- Прогон: `{report['run_id']}` · модели: " +
+             ", ".join(f"{k} = `{v}`" for k, v in report["models"].items()))
+    corp = report.get("corpus") or {}
+    if corp:
+        L.append(f"- Источники: {len(corp.get('docs', []))} документов, {corp.get('chunks')} фрагментов, "
+                 f"эмбеддинги `{corp.get('embed_model')}`")
+    L.append(f"- **Требуют внимания человека: {nr['count']} из {len(claims)}** · "
+             f"цитаты проверены кодом: {agg['grounding']['ok']}/{agg['grounding']['checks']}"
+             + (f" ({agg['grounding']['rate']:.0%})" if agg["grounding"]["rate"] is not None else ""))
     if m:
-        L.append(f"- Cost: ${m.get('cost_usd', 0):.4f} (estimate) · {m.get('llm_calls')} LLM calls · "
-                 f"{m.get('tokens_in')} in / {m.get('tokens_out')} out tokens · {m.get('elapsed_s')} s")
+        L.append(f"- Стоимость: ${m.get('cost_usd', 0):.4f} (оценка по прайсу) · {m.get('llm_calls')} вызовов LLM · "
+                 f"{m.get('elapsed_s')} с")
+    L += ["", "## Итог", "", report.get("summary") or "_резюме недоступно_", ""]
+    L += ["## Утверждения", "", "| # | Утверждение | Вердикт | Статус | На проверку |", "|---|---|---|---|---|"]
+    for c in claims:
+        flag = "👁 " + "; ".join(nr["claims"][c["id"]]) if c["id"] in nr["claims"] else ""
+        L.append(f"| {c['id']} | {_md(c['text'])} | {VERDICT_ICON.get(c['verdict'], '')} {VERDICT_RU[c['verdict']]} | "
+                 f"{STATUS_RU.get(c['status'], c['status'])} | {flag} |")
     L.append("")
-    L.append("## Meta-review")
-    L.append("")
-    L.append(report.get("meta_review") or "_not available_")
-    L.append("")
-    L.append("## Claims")
-    L.append("")
-    L.append("| # | Claim | Final verdict | Status | Score |")
-    L.append("|---|---|---|---|---|")
-    for c in report["claims"]:
-        text = c["text"].replace("|", "\\|")
-        L.append(f"| {c['id']} | {text} | {c['verdict']} | {c['status']} | {agg['claim_scores'][c['id']]} |")
-    L.append("")
-    ci = agg["critic_issues"]
-    L.append("## What the critic caught")
-    L.append("")
-    if ci["total"]:
-        for k, v in sorted(ci["by_type"].items(), key=lambda kv: -kv[1]):
-            L.append(f"- `{k}`: {v}")
-        L.append(f"- by severity: " + ", ".join(f"{k}={v}" for k, v in ci["by_severity"].items()))
-    else:
-        L.append("- no issues raised")
-    L.append("")
-    for c in report["claims"]:
-        L.append(f"### {c['id']} · {c['status'].upper()} · {c['verdict']}")
+    L += ["## Что исправить", ""]
+    fixes = [c for c in claims if c["verdict"] in ("CONTRADICTED", "OVERSTATED", "PARTIALLY_SUPPORTED")]
+    if not fixes:
+        L.append("- ошибок не найдено")
+    for c in fixes:
+        L.append(f"- **{c['id']}** {VERDICT_ICON[c['verdict']]} «{_md(c.get('quote') or c['text'])}»")
+        if c.get("correction"):
+            L.append(f"  - по источникам: {_md(c['correction'])}")
+    unv = [c for c in claims if c["verdict"] == "UNVERIFIABLE"]
+    if unv:
+        L += ["", "## Не найдено в источниках (уточнить у ответственных)", ""]
+        for c in unv:
+            L.append(f"- **{c['id']}** «{_md(c.get('quote') or c['text'])}»")
+    L += ["", "## Подробно", ""]
+    for c in claims:
+        L.append(f"### {c['id']} · {VERDICT_ICON.get(c['verdict'], '')} {VERDICT_RU[c['verdict']]} · "
+                 f"{STATUS_RU.get(c['status'], c['status'])}")
         L.append("")
-        L.append(f"> {c['text']}")
+        L.append(f"> {c.get('quote') or c['text']}")
         L.append("")
-        L.append(f"*{c['type']}, section “{c['section']}”, confidence {c.get('confidence')}*")
+        L.append(f"*Утверждение: {c['text']}* · тип `{c['type']}` · уверенность {c.get('confidence')}")
         L.append("")
         for h in c["history"]:
             a = h["analyst"]
-            L.append(f"**Round {h['round']} — Analyst: {a['verdict']}** (confidence {a.get('confidence')})")
+            L.append(f"**Раунд {h['round']} — аналитик: {VERDICT_RU[a['verdict']]}** (уверенность {a.get('confidence')})")
             L.append("")
-            L.append(a.get("reasoning", "").strip())
+            L.append((a.get("reasoning") or "").strip())
             if a.get("response_to_critic"):
-                L.append("")
-                L.append(f"*Response to critic:* {a['response_to_critic'].strip()}")
+                L += ["", f"*Ответ критику:* {a['response_to_critic'].strip()}"]
             L.append("")
             for e, g in zip(a.get("evidence", []), h.get("grounding", [])):
-                mark = "✅" if g["ok"] else "❌ ungrounded"
-                L.append(f"- {mark} [{e['stance']}] `{e['chunk_id']}`: “{e['quote']}” (match {g['score']:.0f})")
+                mark = "✅" if g["ok"] else "❌ цитата не найдена"
+                L.append(f"- {mark} [{e['stance']}] `{e['chunk_id']}`: «{_md(e['quote'])}» (совпадение {g['score']:.0f})")
             for con in a.get("concerns", []):
-                L.append(f"- concern: {con}")
+                L.append(f"- оговорка: {con}")
             cr = h.get("critic")
             if cr:
-                L.append("")
-                sugg = f", suggests {cr['suggested_verdict']}" if cr.get("suggested_verdict") else ""
-                L.append(f"**Round {h['round']} — Critic: {cr['stance']}**{sugg}")
-                L.append("")
-                L.append(cr.get("reasoning", "").strip())
+                sugg = f", предлагает «{VERDICT_RU[cr['suggested_verdict']]}»" if cr.get("suggested_verdict") else ""
+                L += ["", f"**Раунд {h['round']} — критик: {cr['stance']}**{sugg}", "", (cr.get("reasoning") or "").strip()]
                 for i in cr.get("issues", []):
                     L.append(f"- [{i['severity']}] `{i['type']}`: {i['detail']}")
                     for ce in i.get("counter_evidence", []):
-                        L.append(f"  - `{ce['chunk_id']}`: “{ce['quote']}”")
+                        L.append(f"  - `{ce['chunk_id']}`: «{_md(ce['quote'])}»")
             L.append("")
         if c["status"] == "disputed":
-            L.append(f"**Disputed.** Analyst holds {c['verdict']}; critic suggests "
-                     f"{c.get('critic_suggested') or 'a different verdict'}. Both positions shown above.")
+            L.append(f"**Спорное.** Аналитик: {VERDICT_RU[c['verdict']]}; критик: "
+                     f"{VERDICT_RU.get(c.get('critic_suggested') or '', 'другой вердикт')}. Нужно решение человека.")
             L.append("")
-    L.append("## Related papers in corpus")
-    L.append("")
-    for p in report.get("papers", []):
-        L.append(f"- {p.get('title')} ({p.get('year') or 'n.d.'}) — {p.get('url') or p['paper_id']}"
-                 f" · {p.get('chunks', 0)} chunks{' · full text' if p.get('fulltext') else ' · abstract'}")
-    L.append("")
+    if report.get("claim_errors"):
+        L += ["## Ошибки выполнения", ""]
+        for e in report["claim_errors"]:
+            L.append(f"- {e['claim_id']}: {e['error']}")
+        L.append("")
+    L += ["---", "", f"_Правило отбора для человека: {NEEDS_REVIEW_RULE}._", ""]
     return "\n".join(L)

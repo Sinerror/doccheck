@@ -8,34 +8,19 @@ from __future__ import annotations
 
 import re
 from collections import Counter
-from dataclasses import dataclass, field
 
 import pymupdf as fitz
 
-NUMBERED = re.compile(r"^(?:\d+(?:\.\d+){0,2}\.?|[A-H](?:\.\d+)?)\s+[A-Z][\w\-’' ,:&()/]{1,70}$")
+from .local import ParsedDoc
+
+NUMBERED = re.compile(r"^(?:\d+(?:\.\d+){0,2}\.?|[A-HА-И](?:\.\d+)?)\s+[A-ZА-ЯЁ«][\w\-’'«» ,:&()/]{1,70}$")
 KNOWN = re.compile(r"^(abstract|introduction|background|related work|conclusions?|discussion|results|"
-                   r"experiments?|methods?|acknowledg(e)?ments?|references|bibliography|appendix)$", re.I)
-DROP = re.compile(r"^(?:\d+\.?\s+)?(references|bibliography)$", re.I)
+                   r"experiments?|methods?|acknowledg(e)?ments?|references|bibliography|appendix|"
+                   r"введение|термины|предмет договора|заключение|приложение( \d+)?|список литературы)$", re.I)
+DROP = re.compile(r"^(?:\d+\.?\s+)?(references|bibliography|список литературы)$", re.I)
 
 
-@dataclass
-class ParsedPDF:
-    title: str
-    sections: list[tuple[str, str]] = field(default_factory=list)  # (section, text)
-    page_count: int = 0
-
-    def section_text(self, pattern: str) -> str:
-        rx = re.compile(pattern, re.I)
-        return "\n".join(t for s, t in self.sections if rx.search(s))
-
-    @property
-    def headings(self) -> list[str]:
-        return [s for s, _ in self.sections]
-
-    @property
-    def full_text(self) -> str:
-        return "\n\n".join(f"{s}\n{t}" for s, t in self.sections)
-
+ParsedPDF = ParsedDoc  # backwards-compatible name
 
 def _raw_lines(doc: fitz.Document):
     for pno, page in enumerate(doc):
@@ -78,11 +63,11 @@ def _lines(doc: fitz.Document):
 
 
 def _clean(text: str) -> str:
-    text = re.sub(r"-\n(?=[a-z])", "", text)
+    text = re.sub(r"-\n(?=[a-zа-яё])", "", text)
     return re.sub(r"\s+", " ", text).strip()
 
 
-def parse_pdf(data: bytes, min_sections: int = 3) -> ParsedPDF:
+def parse_pdf(data: bytes, min_sections: int = 3) -> ParsedDoc:
     doc = fitz.open(stream=data, filetype="pdf")
     lines = list(_lines(doc))
     sizes = Counter()
@@ -130,10 +115,10 @@ def parse_pdf(data: bytes, min_sections: int = 3) -> ParsedPDF:
                 out.append((f"Page {pno + 1}", txt))
     pc = doc.page_count
     doc.close()
-    return ParsedPDF(title=title, sections=out, page_count=pc)
+    return ParsedDoc(title=title, sections=out, page_count=pc)
 
 
-def abstract_like(parsed: ParsedPDF, limit: int = 2500) -> str:
+def abstract_like(parsed: ParsedDoc, limit: int = 2500) -> str:
     a = parsed.section_text(r"^abstract$")
     if a:
         return a[:limit]

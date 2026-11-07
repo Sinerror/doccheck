@@ -1,4 +1,4 @@
-"""LLM layer (SPEC §5), adapted to an OpenAI-compatible router (see DECISIONS.md).
+"""LLM layer for any OpenAI-compatible /v1/chat/completions endpoint (router, LM Studio, Ollama, vLLM).
 
 * Structured output: Pydantic model → JSON Schema → function tool with forced
   `tool_choice`. One streamed call gives live reasoning + strict JSON.
@@ -9,6 +9,7 @@
 * Retries: tenacity, 3 attempts on 429/5xx/connection errors. Invalid JSON →
   one extra attempt with the validation error in the prompt.
 * Usage of every call is pushed to the bus as a cumulative `metrics` event.
+* The Analyst can use its own endpoint (DOCCHECK_ANALYST_BASE_URL, e.g. a local model); its calls cost $0.
 * Fixtures: mode="replay" reads recorded raw stream chunks from
   tests/fixtures/llm/{key}.json; mode="record" calls the API and rewrites them.
 """
@@ -155,15 +156,21 @@ class LLM:
         self.mode: Mode = mode or ("record" if settings.record else "live")
         self.fixtures_dir = fixtures_dir
         self._sem = asyncio.Semaphore(max_concurrency)
-        self._client: AsyncOpenAI | None = None
+        self._clients: dict[str, AsyncOpenAI] = {}
         self._fixture_counts: dict[str, int] = {}
 
-    @property
-    def client(self) -> AsyncOpenAI:
-        if self._client is None:
-            self._client = AsyncOpenAI(base_url=self.settings.llm_base_url, api_key=self.settings.llm_api_key,
-                                       timeout=self.settings.llm_timeout_s, max_retries=0)
-        return self._client
+    def is_local(self, model: str) -> bool:
+        return self.settings.analyst_is_local and model == self.settings.analyst_model
+
+    def client_for(self, model: str) -> AsyncOpenAI:
+        if self.is_local(model):
+            url, key = self.settings.analyst_base_url, self.settings.analyst_api_key
+        else:
+            url, key = self.settings.llm_base_url, self.settings.llm_api_key
+        if url not in self._clients:
+            self._clients[url] = AsyncOpenAI(base_url=url, api_key=key or "none",
+                                             timeout=self.settings.llm_timeout_s, max_retries=0)
+        return self._clients[url]
 
     # -- raw transport (live / record / replay) --------------------------------
 
@@ -191,7 +198,7 @@ class LLM:
         if extra:
             kwargs["extra_body"] = extra
         recorded: list[dict] = []
-        stream = await self.client.chat.completions.create(**kwargs)
+        stream = await self.client_for(model).chat.completions.create(**kwargs)
         try:
             async for chunk in stream:
                 d = chunk.model_dump(exclude_none=True)
@@ -294,7 +301,8 @@ class LLM:
         details = u.get("prompt_tokens_details") or {}
         cached = int(details.get("cached_tokens") or u.get("prompt_cache_hit_tokens") or 0)
         if self.bus is not None:
-            self.bus.add_usage(res.model, tin, tout, price_usd(res.model, tin, tout, cached))
+            cost = 0.0 if self.is_local(res.model) else price_usd(res.model, tin, tout, cached)
+            self.bus.add_usage(res.model, tin, tout, cost)
 
     async def call(self, *, role: Role, model: str, messages: list[dict], tools: list[dict] | None = None,
                    tool_choice: Any = "auto", claim_id: str | None = None, round: int = 0,
@@ -317,7 +325,8 @@ class LLM:
                     # so the cost on screen is not under-reported.
                     if self.bus is not None:
                         tin, tout = e.prompt_chars // 4, e.chars // 4
-                        self.bus.add_usage(model, tin, tout, price_usd(model, tin, tout))
+                        self.bus.add_usage(model, tin, tout,
+                                           0.0 if self.is_local(model) else price_usd(model, tin, tout))
                     if degrade or self.mode == "replay":
                         raise
                     log.warning("%s; retrying with reasoning_effort=low", e)

@@ -1,4 +1,5 @@
-"""FastAPI backend (SPEC §7): runs, live SSE, replay SSE, report, vector map, health."""
+"""FastAPI backend: start a check, live SSE, replay SSE, report, examples, corpus, health.
+If `web/dist` exists (docker image), the UI is served from the same origin."""
 from __future__ import annotations
 
 import asyncio
@@ -10,24 +11,24 @@ import uuid
 from pathlib import Path
 from typing import Any
 
-import httpx
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, PlainTextResponse
+from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
+from fastapi.staticfiles import StaticFiles
 from qdrant_client import QdrantClient
 from sse_starlette.sse import EventSourceResponse
 
-from .config import Settings, get_settings
+from .config import ROOT, Settings, get_settings
 from .context import RunParams
 from .events import Event, EventBus, read_events
 from .orchestrator import run_pipeline
 from .rag.qdrant_store import QdrantStore
-from .sources.arxiv import parse_arxiv_id
+from .sources.local import SUPPORTED, load_corpus, load_file, parse_bytes, parse_text
 
 log = logging.getLogger("doccheck.api")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
-app = FastAPI(title="TRIAD", version="0.1.0")
+app = FastAPI(title="DocCheck", version="0.2.0")
 app.add_middleware(CORSMiddleware, allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
                    allow_methods=["*"], allow_headers=["*"])
 
@@ -35,6 +36,8 @@ ACTIVE: dict[str, EventBus] = {}
 _TASKS: set[asyncio.Task] = set()
 _STATE: dict[str, Any] = {}
 RUN_ID_RE = re.compile(r"^[A-Za-z0-9_.-]{1,80}$")
+MAX_UPLOAD = 5 * 1024 * 1024
+MAX_TEXT = 40_000
 
 
 def settings() -> Settings:
@@ -46,7 +49,7 @@ def settings() -> Settings:
 def store() -> QdrantStore:
     if "store" not in _STATE:
         s = settings()
-        st = QdrantStore(QdrantClient(url=s.qdrant_url, api_key=s.qdrant_api_key, timeout=30), s.collection)
+        st = QdrantStore(QdrantClient(url=s.qdrant_url, api_key=s.qdrant_api_key, timeout=60), s.collection)
         st.ensure_collection()
         _STATE["store"] = st
     return _STATE["store"]
@@ -70,57 +73,66 @@ def _int(v: Any, default: int, lo: int, hi: int) -> int:
     return max(lo, min(hi, x))
 
 
+def _example_path(name: str) -> Path:
+    d = settings().examples_dir
+    p = (d / name).resolve()
+    if p.parent != d.resolve() or not p.is_file():
+        raise HTTPException(404, "example not found")
+    return p
+
+
 @app.post("/api/runs")
 async def create_run(request: Request) -> dict[str, str]:
+    """JSON `{text, title?}` or `{example: "<file name>"}`, or multipart with `file` (md/txt/html/docx/pdf).
+    Options: max_claims, debate_rounds, use_critic, callback_url."""
     ctype = request.headers.get("content-type", "")
-    pdf_bytes: bytes | None = None
-    filename: str | None = None
-    concept: str | None = None
-
     if ctype.startswith("multipart/form-data"):
         form = await request.form()
         body: dict[str, Any] = {k: v for k, v in form.items() if isinstance(v, str)}
-        upload = form.get("file") or form.get("pdf")
-        if upload is not None and not isinstance(upload, str):
-            pdf_bytes = await upload.read()
-            filename = upload.filename
-            if not pdf_bytes.startswith(b"%PDF"):
-                raise HTTPException(422, "uploaded file is not a PDF")
+        upload = form.get("file")
+        if upload is None or isinstance(upload, str):
+            raise HTTPException(422, "multipart request needs a `file`")
+        data = await upload.read()
+        filename = upload.filename or "document.txt"
+        if len(data) > MAX_UPLOAD:
+            raise HTTPException(413, "file is larger than 5 MB")
+        if Path(filename).suffix.lower() not in SUPPORTED:
+            raise HTTPException(422, f"unsupported file type; use one of {', '.join(SUPPORTED)}")
+        try:
+            doc = await asyncio.to_thread(parse_bytes, data, filename)
+        except Exception as e:  # noqa: BLE001
+            raise HTTPException(422, f"could not read the file: {e}")
     else:
         try:
             body = await request.json()
         except json.JSONDecodeError:
             raise HTTPException(422, "expected JSON body or multipart form")
-
-    # Paper review mode (original)
-    arxiv_id = parse_arxiv_id(str(body.get("arxiv_id") or "")) or None
-    url = body.get("url")
-    if not arxiv_id and url:
-        arxiv_id = parse_arxiv_id(url) if "arxiv.org" in url else None
-        if not arxiv_id and pdf_bytes is None:
-            async with httpx.AsyncClient(timeout=60, follow_redirects=True) as c:
-                r = await c.get(url)
-            if r.status_code != 200 or not r.content.startswith(b"%PDF"):
-                raise HTTPException(422, "url is neither an arXiv link nor a downloadable PDF")
-            pdf_bytes, filename = r.content, url.rsplit("/", 1)[-1]
-    if not arxiv_id and pdf_bytes is None:
-        raise HTTPException(422, "provide arxiv_id, url, concept, or a PDF file")
+        if body.get("example"):
+            p = _example_path(str(body["example"]))
+            doc, filename = load_file(p), p.name
+        elif body.get("text"):
+            text = str(body["text"])[:MAX_TEXT]
+            filename = (str(body.get("title") or "Текст").strip()[:80] or "Текст") + ".md"
+            doc = parse_text(text, Path(filename).stem)
+        else:
+            raise HTTPException(422, "provide `text`, `example` or a file")
+    if not doc.sections:
+        raise HTTPException(422, "the document is empty")
     s = settings()
-    if not s.has_llm_key:
-        raise HTTPException(503, "DOCCHECK_LLM_API_KEY is not configured")
-    params = RunParams(max_claims=_int(body.get("max_claims"), 8, 1, 20),
-                       max_papers=_int(body.get("max_papers"), 15, 0, 40),
-                       debate_rounds=_int(body.get("debate_rounds"), 2, 0, 4))
+    if not s.has_llm_key and not s.llm_base_url.startswith(("http://127.0.0.1", "http://localhost")):
+        raise HTTPException(503, "DOCCHECK_LLM_API_KEY is not configured (Replay of recorded runs still works)")
+    params = RunParams(max_claims=_int(body.get("max_claims"), 10, 1, 20),
+                       debate_rounds=_int(body.get("debate_rounds"), 2, 0, 4),
+                       use_critic=str(body.get("use_critic", "true")).lower() not in ("false", "0", "no"))
     run_id = new_run_id()
     bus = EventBus(run_id, run_dir(run_id) / "events.jsonl")
     ACTIVE[run_id] = bus
-    st = store()
-    task = asyncio.create_task(run_pipeline(run_id=run_id, settings=s, store=st, bus=bus, params=params,
-                                            arxiv_id=arxiv_id, pdf_bytes=pdf_bytes, filename=filename,
+    task = asyncio.create_task(run_pipeline(run_id=run_id, settings=s, store=store(), bus=bus, doc=doc,
+                                            filename=filename, params=params,
                                             callback_url=body.get("callback_url")))
     _TASKS.add(task)
     task.add_done_callback(_TASKS.discard)
-    return {"run_id": run_id, "mode": "review"}
+    return {"run_id": run_id}
 
 
 def _sse(ev: Event) -> dict[str, str]:
@@ -158,6 +170,7 @@ async def live_events(run_id: str, request: Request):
 
 @app.get("/api/runs/{run_id}/replay")
 async def replay(run_id: str, speed: float = 4.0, max_gap: float = 5.0):
+    """Replays a recorded run with its original timing ÷ speed. Needs no LLM key and no Qdrant."""
     path = run_dir(run_id) / "events.jsonl"
     if not path.exists():
         raise HTTPException(404, "run not found")
@@ -193,8 +206,10 @@ def _run_info(d: Path) -> dict[str, Any] | None:
     rep = d / "report.json"
     if rep.exists():
         r = json.loads(rep.read_text(encoding="utf-8"))
-        info.update(status="finished", review_score=r.get("review_score"), grounding_rate=r.get("grounding_rate"),
-                    status_counts=r["aggregate"]["status_counts"], cost_usd=r.get("metrics", {}).get("cost_usd"))
+        agg = r["aggregate"]
+        info.update(status="finished", grounding_rate=r.get("grounding_rate"), claims=len(r["claims"]),
+                    needs_review=agg["needs_review"]["count"], verdict_counts=agg["verdict_counts"],
+                    status_counts=agg["status_counts"], cost_usd=r.get("metrics", {}).get("cost_usd"))
     elif (d / "error.txt").exists():
         info["status"] = "failed"
     elif d.name in ACTIVE and not ACTIVE[d.name].closed:
@@ -225,29 +240,51 @@ async def get_report_md(run_id: str):
     if not p.exists():
         raise HTTPException(404, "report not ready")
     return PlainTextResponse(p.read_text(encoding="utf-8"), media_type="text/markdown; charset=utf-8",
-                             headers={"Content-Disposition": f'attachment; filename="triad-{run_id}.md"'})
+                             headers={"Content-Disposition": f'attachment; filename="doccheck-{run_id}.md"'})
 
 
 @app.get("/api/runs/{run_id}/vector-map")
 async def vector_map(run_id: str):
-    d = run_dir(run_id)
-    try:
-        points = await asyncio.to_thread(store().vector_map, run_id)
-    except Exception as e:  # noqa: BLE001 - Qdrant down → fall back to the snapshot
-        log.warning("vector map from qdrant failed: %s", e)
-        points = []
-    if not points and (d / "vector_map.json").exists():
-        points = json.loads((d / "vector_map.json").read_text(encoding="utf-8"))
-    if not points and not d.exists():
+    p = run_dir(run_id) / "vector_map.json"
+    if p.exists():
+        return JSONResponse(json.loads(p.read_text(encoding="utf-8")))
+    if not run_dir(run_id).exists():
         raise HTTPException(404, "run not found")
-    return points
+    return []
+
+
+@app.get("/api/examples")
+async def examples() -> list[dict[str, Any]]:
+    d = settings().examples_dir
+    if not d.is_dir():
+        return []
+    out = []
+    for p in sorted(d.iterdir()):
+        if p.suffix.lower() in SUPPORTED:
+            doc = load_file(p)
+            out.append({"name": p.name, "title": doc.title or p.stem, "chars": doc.chars,
+                        "preview": doc.full_text[:400]})
+    return out
+
+
+@app.get("/api/examples/{name}")
+async def example(name: str) -> dict[str, Any]:
+    p = _example_path(name)
+    return {"name": p.name, "text": p.read_text(encoding="utf-8")}
+
+
+@app.get("/api/corpus")
+async def corpus() -> list[dict[str, Any]]:
+    docs = await asyncio.to_thread(load_corpus, settings().corpus_dir)
+    return [{"doc_id": d.doc_id, "title": d.title, "sections": d.parsed.headings, "chars": d.parsed.chars}
+            for d in docs]
 
 
 @app.get("/api/health")
 async def health() -> dict[str, Any]:
     s = settings()
     out: dict[str, Any] = {"llm_key": s.has_llm_key, "llm_base_url": s.llm_base_url, "collection": s.collection,
-                           "models": {"scout": s.scout_model, "analyst": s.analyst_model, "critic": s.critic_model}}
+                           "analyst_local": s.analyst_is_local, "models": s.models()}
     try:
         st = store()
         out["qdrant"] = True
@@ -257,3 +294,15 @@ async def health() -> dict[str, Any]:
         out["qdrant_error"] = str(e)[:300]
     out["ok"] = bool(out["qdrant"] and out["llm_key"])
     return out
+
+
+_DIST = ROOT / "web" / "dist"
+if _DIST.is_dir():
+    app.mount("/assets", StaticFiles(directory=_DIST / "assets"), name="assets")
+
+    @app.get("/{path:path}", include_in_schema=False)
+    async def spa(path: str):
+        f = (_DIST / path).resolve()
+        if path and f.is_file() and _DIST.resolve() in f.parents:
+            return FileResponse(f)
+        return FileResponse(_DIST / "index.html")

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { EVENT_TYPES, type TriadEvent } from "../types/events";
+import { EVENT_TYPES, type DocCheckEvent } from "../types/events";
 import { ROLE_COLOR } from "../lib/colors";
 import { fmtTime } from "../lib/format";
 
@@ -16,7 +16,7 @@ const TYPE_COLOR: Record<string, string> = {
 
 const MAX_ROWS = 400;
 
-export function EventLog({ events }: { events: TriadEvent[] }) {
+export function EventLog({ events }: { events: DocCheckEvent[] }) {
   const [open, setOpen] = useState(false);
   const [type, setType] = useState<string>("all");
   const [role, setRole] = useState<string>("all");
