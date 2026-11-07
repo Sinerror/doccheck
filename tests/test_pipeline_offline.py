@@ -20,8 +20,11 @@ DOC = EVAL_DOCS / "d05_otvet_api.md"
 
 
 @pytest.mark.skipif(not RECORD and not (FIX / "scout-claims.json").exists(), reason="no fixture recorded")
-async def test_full_pipeline_offline(tmp_path, mem_store):
+@pytest.mark.parametrize("orchestrator", ["asyncio", "langgraph"])
+async def test_full_pipeline_offline(tmp_path, mem_store, orchestrator):
+    """Both orchestrators replay the same recorded LLM answers and must produce the same verdicts."""
     settings = Settings()
+    settings.orchestrator = orchestrator
     settings.runs_dir = tmp_path
     bus = EventBus("offline", tmp_path / "offline" / "events.jsonl")
     llm = LLM(settings, bus=bus, mode="record" if RECORD else "replay", fixtures_dir=FIX)

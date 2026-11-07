@@ -63,6 +63,8 @@ class Settings:
     max_stream_chars: int = field(default_factory=lambda: int(_env("DOCCHECK_MAX_STREAM_CHARS", "48000")))
     llm_call_max_s: float = field(default_factory=lambda: float(_env("DOCCHECK_LLM_CALL_MAX_S", "360")))
     llm_timeout_s: float = field(default_factory=lambda: float(_env("DOCCHECK_LLM_TIMEOUT_S", "180")))
+    # "asyncio" (hand-written loop, default) or "langgraph" (same debate as a LangGraph StateGraph)
+    orchestrator: str = field(default_factory=lambda: _env("DOCCHECK_ORCHESTRATOR", "asyncio"))
     record: bool = field(default_factory=lambda: _env("DOCCHECK_RECORD") == "1")
 
     @property

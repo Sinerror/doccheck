@@ -110,6 +110,10 @@ class Pipeline:
 
     async def debate(self, claim: Claim) -> dict[str, Any]:
         ctx = self.ctx
+        if ctx.settings.orchestrator == "langgraph":  # same roles and events, control flow as a LangGraph graph
+            from .graph import run_debate_graph
+            verdict, history, rounds = await run_debate_graph(self, claim)
+            return self._finalize(claim, verdict, history, rounds)
         hits = await analyst.gather_context(ctx, claim)
         pool: dict[str, Hit] = {h.chunk_id: h for h in hits}
         context_hits = list(hits)
@@ -141,6 +145,10 @@ class Pipeline:
                     context_hits.append(h)
             verdict = await analyst.revise(ctx, claim, context_hits, verdict, round_, g, crit)
             round_ += 1
+        return self._finalize(claim, verdict, history, rounds)
+
+    def _finalize(self, claim: Claim, verdict: AnalystVerdict, history: list[dict[str, Any]],
+                  rounds: list[dict[str, Any]]) -> dict[str, Any]:
         status = debate_status(rounds) if rounds else "accepted"
         last_crit = history[-1].get("critic") or {}
         result = {**claim.model_dump(mode="json"), "status": status, "verdict": verdict.verdict.value,
