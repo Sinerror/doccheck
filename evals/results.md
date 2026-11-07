@@ -17,6 +17,9 @@ Mean ± sd over runs of the same configuration (stochastic models: each run is o
 | full-v2 | all (56 errors) | 1 | `deepseek-v4.1-flash` | 100% | 100% | 96% | 2.0 | 2% | 2% | 100% | $0.139 |
 | full-v2 | basic (37 errors) | 1 | `deepseek-v4.1-flash` | 100% | 100% | 100% | 0.0 | 2% | 2% | 100% | $0.138 |
 | full-v2 | hard (19 errors) | 1 | `deepseek-v4.1-flash` | 100% | 100% | 90% | 2.0 | 0% | 0% | 100% | $0.141 |
+| local-analyst | all (56 errors) | 1 | `mistralai/devstral-small-2-2512 (local)` | 93% | 100% | 93% | 0.0 | 0% | 16% | 97% | $0.000 |
+| local-analyst | basic (37 errors) | 1 | `mistralai/devstral-small-2-2512 (local)` | 97% | 100% | 97% | 0.0 | 0% | 12% | 98% | $0.000 |
+| local-analyst | hard (19 errors) | 1 | `mistralai/devstral-small-2-2512 (local)` | 84% | 100% | 84% | 0.0 | 0% | 22% | 96% | $0.000 |
 
 ## Latest run, full pipeline (analyst ⇄ critic): `eval-20261107-183017-full-v2`
 
@@ -122,6 +125,7 @@ Models: scout = `gpt-6-luna`, analyst = `deepseek-v4.1-flash`, critic = `gpt-6.1
 | `eval-20261107-180552-analyst-only` | analyst-only | `deepseek-v4.1-flash` | `642eb243` | 96% | 100% | 96% | 5% | 100% | $0.22 |
 | `eval-20261107-181248-full` | full-v1 | `deepseek-v4.1-flash` | `642eb243` | 95% | 100% | 96% | 5% | 100% | $3.33 |
 | `eval-20261107-183017-full-v2` | full-v2 | `deepseek-v4.1-flash` | `61d86cb3` | 100% | 100% | 96% | 2% | 100% | $2.09 |
+| `eval-20261107-183945-local-analyst` | local-analyst | `mistralai/devstral-small-2-2512 (local)` | `4cc4818c` | 93% | 100% | 93% | 0% | 97% | $0.00 |
 
 ## Definitions and caveats
 
