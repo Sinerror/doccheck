@@ -1,0 +1,40 @@
+[project]
+name = "doccheck"
+version = "0.1.0"
+description = "TRIAD — agentic scientific paper reviewer (Scout → Analyst ⇄ Critic)"
+readme = "README.md"
+requires-python = ">=3.11,<3.14"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "sse-starlette>=2.1",
+    "python-multipart>=0.0.9",
+    "httpx>=0.27",
+    "openai>=1.50",
+    "pydantic>=2.8",
+    "python-dotenv>=1.0",
+    "qdrant-client>=1.12",
+    "fastembed>=0.4",
+    "pymupdf>=1.24",
+    "rapidfuzz>=3.9",
+    "tenacity>=8.5",
+    "numpy>=1.26",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+    "pytest-asyncio>=0.24",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["doccheck"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+filterwarnings = ["ignore:Payload indexes have no effect"]
