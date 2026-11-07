@@ -86,7 +86,7 @@ class Pipeline:
 
     async def run_scout(self, doc: ParsedDoc) -> list[Claim]:
         self.stage("scout")
-        claims = await scout.extract_claims(self.ctx, doc, self.target["title"])
+        claims, _ = await scout.extract_claims(self.ctx, doc, self.target["title"])
         self.bus.emit("stage.finished", {"stage": "scout", "detail": {"claims": len(claims)}})
         return claims
 
@@ -206,6 +206,7 @@ class Pipeline:
             "run_id": ctx.run_id,
             "created_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
             "target": self.target,
+            "document_context": ctx.doc_context,
             "corpus": self.corpus,
             "params": vars(ctx.params),
             "models": ctx.settings.models(),
@@ -250,9 +251,10 @@ def report_summary(report: dict[str, Any]) -> dict[str, Any]:
 async def run_pipeline(*, run_id: str, settings: Settings, store: QdrantStore, bus: EventBus, doc: ParsedDoc,
                        filename: str, params: RunParams | None = None, llm: LLM | None = None,
                        corpus_dir: Path | None = None, callback_url: str | None = None,
-                       write_summary: bool = True, claims_override: list[Claim] | None = None
-                       ) -> dict[str, Any] | None:
-    """`claims_override` skips the Scout (the eval reuses the same claims to compare analyst models fairly)."""
+                       write_summary: bool = True, claims_override: list[Claim] | None = None,
+                       doc_context: str = "") -> dict[str, Any] | None:
+    """`claims_override` (+ `doc_context`) skips the Scout: the eval reuses the same claims to compare analyst
+    models fairly."""
     params = params or RunParams()
     run_dir = settings.runs_dir / run_id
     ctx = RunCtx(run_id=run_id, settings=settings, bus=bus, llm=llm or LLM(settings, bus=bus), store=store,
@@ -266,8 +268,9 @@ async def run_pipeline(*, run_id: str, settings: Settings, store: QdrantStore, b
         if claims_override is not None:
             pipe.stage("scout")
             claims = [c.model_copy() for c in claims_override]
-            bus.emit("scout.claims", {"claims": [c.model_dump(mode="json") for c in claims], "reused": True},
-                     role="scout")
+            ctx.doc_context = doc_context
+            bus.emit("scout.claims", {"claims": [c.model_dump(mode="json") for c in claims],
+                                      "document_context": doc_context, "reused": True}, role="scout")
             bus.emit("stage.finished", {"stage": "scout", "detail": {"claims": len(claims), "reused": True}})
         else:
             claims = await pipe.run_scout(doc)

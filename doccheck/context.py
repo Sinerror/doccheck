@@ -30,6 +30,7 @@ class RunCtx:
     params: RunParams
     corpus_scope: str = ""
     title: str = ""
+    doc_context: str = ""  # Scout's one-line context of the document (addressee, region, tariff)
 
     @property
     def scopes(self) -> list[str]:

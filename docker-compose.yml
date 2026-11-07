@@ -1,0 +1,32 @@
+# DocCheck: Qdrant + backend with the built UI on http://localhost:8000
+#   docker compose up -d --build        → open http://localhost:8000 and press "Replay" on the demo run (no key needed)
+# Live checks need DOCCHECK_LLM_API_KEY in .env (any OpenAI-compatible endpoint with tool calls).
+services:
+  qdrant:
+    image: qdrant/qdrant:v1.19.1
+    restart: unless-stopped
+    # not published: the app reaches it as qdrant:6333 (no clash with a Qdrant already running on the host)
+    volumes:
+      - qdrant_data:/qdrant/storage
+
+  app:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      - qdrant
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      - QDRANT_URL=http://qdrant:6333
+      - DOCCHECK_RUNS_DIR=/app/runs
+    ports:
+      - "127.0.0.1:8000:8000"
+    volumes:
+      - ./runs:/app/runs
+      - ./data:/app/data:ro
+      - fastembed_cache:/root/.cache/fastembed
+
+volumes:
+  qdrant_data:
+  fastembed_cache:

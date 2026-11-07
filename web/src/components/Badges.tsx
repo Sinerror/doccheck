@@ -17,14 +17,14 @@ export function VerdictBadge({ verdict, struck = false, size = "sm" }: { verdict
 }
 
 export function StatusBadge({ status }: { status: string }) {
-  const s = STATUS_STYLE[status] ?? { color: "#8b95a3", icon: "·" };
+  const s = STATUS_STYLE[status] ?? { color: "#8b95a3", icon: "·", label: status };
   return (
     <span
       className="inline-flex items-center gap-1 rounded-full border px-2 py-px font-mono text-[10px] uppercase tracking-wider text-ink"
       style={{ borderColor: `${s.color}99`, background: `${s.color}26` }}
     >
       <span style={{ color: s.color }}>{s.icon}</span>
-      {status}
+      {s.label}
     </span>
   );
 }

@@ -31,6 +31,9 @@ class Claim(BaseModel):
 
 class ScoutClaimsOutput(BaseModel):
     reasoning: str = Field(description="Brief notes: what the document is, which statements are checkable")
+    document_context: str = Field(description="1-2 sentences in Russian: document type, addressee, the client's "
+                                              "country (Russia / Kazakhstan) if it follows from the text, the tariff "
+                                              "being discussed or offered")
     claims: list[Claim]
 
 

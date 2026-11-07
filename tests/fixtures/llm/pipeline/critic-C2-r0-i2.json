@@ -1,0 +1,4169 @@
+{
+ "model": "gpt-6.1-sol",
+ "messages": [
+  {
+   "role": "system",
+   "content": "Ты — CRITIC, придирчивый аудитор. ANALYST сверил одно утверждение из исходящего документа компании с фиксированным набором фрагментов источников. Твоя задача — найти, где аналитик ошибся: цитаты не из того фрагмента, пропущенное противоречие, свойство другого тарифа или региона, архивная редакция вместо действующей, ссылка на пункт, который говорит другое, слишком широкая формулировка. Не придумывай проблем: если вердикт верный — AGREE.\n\nИнструменты:\n- `search_corpus(query, k)` — гибридный поиск по источникам компании. Ищи то, чего аналитик не видел, особенно опровержения и ограничения (другой тариф, другой регион, исключения, действующая редакция).\n- `get_chunk(chunk_id)` — прочитать фрагмент целиком.\n- `submit_critique(...)` — итог. У тебя не больше 4 раундов инструментов, потом нужно отправить итог.\n\nФакты, с которыми нельзя спорить:\n- ПРОВЕРКА ЦИТАТ ниже сделана программой. Цитата с ok=false — это issue `ungrounded_quote` (severity не ниже medium, если вердикт на ней держится).\n- Каждая `counter_evidence.quote` должна быть дословной подстрокой (до 300 символов) указанного фрагмента: её проверят так же.\n\nСтандарт, который ты защищаешь:\n- SUPPORTED допустим, только если совпадают числа, единицы, сроки, тариф, регион и действующая редакция. Подтверждение из архивной (утратившей силу) редакции — issue `outdated_source`.\n- Если источники ничего не говорят о факте — верный вердикт UNVERIFIABLE; если говорят иначе — CONTRADICTED; если утверждение шире источника («всем», «на всех тарифах», «круглосуточно») — OVERSTATED.\n- Учитывай контекст документа (регион, тариф, клиент). Не оспаривай верный вердикт из-за оговорок, которые очевидны из контекста или не меняют смысл для клиента: это шум, а не ошибка.\n\nТипы issue: ungrounded_quote, overclaim, missed_contradiction, wrong_scope, weak_evidence, wrong_verdict, outdated_source. Severity: low, medium, high (high — вердикт нужно менять).\nstance=CHALLENGE только если есть хотя бы одно issue medium или high. `suggested_verdict` — когда считаешь, что вердикт должен быть другим, иначе null.\nСначала `reasoning` на русском (до 150 слов)."
+  },
+  {
+   "role": "user",
+   "content": "Документ на проверке: d05_otvet_api\nКонтекст документа: Ответ клиенту на вопросы разработчика об API продукта Сорока CRM. Страна клиента не определяется по тексту. Упоминаются тарифы «Старт» и «Бизнес».\n\nУТВЕРЖДЕНИЕ C2 (тип: number):\n\"На тарифе «Бизнес» лимит составляет 300 запросов в минуту.\"\n\nИсходное предложение документа: \"На тарифе «Бизнес» лимит составляет 300 запросов в минуту.\"\n\n=== ВЕРДИКТ АНАЛИТИКА (раунд 0) ===\n{\n \"reasoning\": \"Утверждение: на тарифе «Бизнес» лимит 300 запросов в минуту. Источник 08_integracii.md#0 прямо указывает: «60 запросов в минуту на «Команде», 300 на «Бизнесе», 1000 на «Корпоративном»». Тарифные страницы для России (01_tarify_rf.md#3) и Казахстана (02_tarify_kz.md#3) также подтверждают 300 запросов в минуту для REST API на «Бизнесе». Число, единица измерения и объект совпадают. Упоминание 300 запросов в 11_funkcii.md#3 относится к AI-ассистенту (в месяц), но это иной объект и не противоречит утверждению о лимите API. Утверждение полностью подтверждено.\",\n \"verdict\": \"SUPPORTED\",\n \"confidence\": 0.97,\n \"evidence\": [\n  {\n   \"chunk_id\": \"08_integracii.md#0\",\n   \"quote\": \"Лимиты запросов зависят от тарифа: 60 запросов в минуту на «Команде», 300 на «Бизнесе», 1000 на «Корпоративном».\",\n   \"stance\": \"supports\"\n  },\n  {\n   \"chunk_id\": \"01_tarify_rf.md#3\",\n   \"quote\": \"Доступен REST API с лимитом 300 запросов в минуту.\",\n   \"stance\": \"supports\"\n  },\n  {\n   \"chunk_id\": \"02_tarify_kz.md#3\",\n   \"quote\": \"REST API с лимитом 300 запросов в минуту\",\n   \"stance\": \"supports\"\n  }\n ],\n \"correction\": null,\n \"concerns\": [\n  \"В 11_funkcii.md#3 упоминается другой лимит 300 — запросов к AI-ассистенту в месяц на пользователя; не путать с лимитом REST API.\",\n  \"Регион клиента в документе не определён, но лимит 300 запросов/мин для «Бизнеса» совпадает и в РФ, и в Казахстане, поэтому вердикт от региона не зависит.\"\n ]\n}\n\n=== ПРОВЕРКА ЦИТАТ (программная) ===\n[\n {\n  \"claim_id\": \"C2\",\n  \"chunk_id\": \"08_integracii.md#0\",\n  \"quote\": \"Лимиты запросов зависят от тарифа: 60 запросов в минуту на «Команде», 300 на «Бизнесе», 1000 на «Корпоративном».\",\n  \"score\": 100.0,\n  \"ok\": true,\n  \"by_role\": \"analyst\",\n  \"round\": 0,\n  \"exists\": true,\n  \"reason\": \"\"\n },\n {\n  \"claim_id\": \"C2\",\n  \"chunk_id\": \"01_tarify_rf.md#3\",\n  \"quote\": \"Доступен REST API с лимитом 300 запросов в минуту.\",\n  \"score\": 100.0,\n  \"ok\": true,\n  \"by_role\": \"analyst\",\n  \"round\": 0,\n  \"exists\": true,\n  \"reason\": \"\"\n },\n {\n  \"claim_id\": \"C2\",\n  \"chunk_id\": \"02_tarify_kz.md#3\",\n  \"quote\": \"REST API с лимитом 300 запросов в минуту\",\n  \"score\": 100.0,\n  \"ok\": true,\n  \"by_role\": \"analyst\",\n  \"round\": 0,\n  \"exists\": true,\n  \"reason\": \"\"\n }\n]\n\n=== ФРАГМЕНТЫ, КОТОРЫЕ ВИДЕЛ АНАЛИТИК (chunk_id) ===\n- 08_integracii.md#0 (API и интеграции / REST API)\n- 08_integracii.md#5 (API и интеграции / Email-рассылки)\n- 01_tarify_rf.md#3 (Тарифы Сорока CRM для России / Тариф «Бизнес»)\n- 11_funkcii.md#3 (Возможности Сорока CRM / AI-ассистент)\n- 02_tarify_kz.md#3 (Тарифы Сорока CRM для Казахстана / Тариф «Бизнес» (Казахстан))\n- 01_tarify_rf.md#2 (Тарифы Сорока CRM для России / Тариф «Команда»)\n- 02_tarify_kz.md#5 (Тарифы Сорока CRM для Казахстана / Пробный период (Казахстан))\n- 01_tarify_rf.md#5 (Тарифы Сорока CRM для России / Дополнительные пользователи)\n\nПроверь вердикт. При необходимости поищи в источниках, затем вызови `submit_critique`."
+  },
+  {
+   "role": "assistant",
+   "content": "Проверю, нет ли в источниках другой действующей редакции лимита или ограничений для тарифа «Бизнес».\n",
+   "tool_calls": [
+    {
+     "id": "call_86991b5005084347ac9713850c8fbf4d",
+     "type": "function",
+     "function": {
+      "name": "search_corpus",
+      "arguments": "{\"query\":\"API Бизнес лимит 300 запросов минуту действующая редакция ограничения\",\"k\":8}"
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "tool_call_id": "call_86991b5005084347ac9713850c8fbf4d",
+   "content": "[chunk_id=08_integracii.md#0] API и интеграции | раздел: REST API\nREST API доступен начиная с тарифа «Команда». Лимиты запросов зависят от тарифа: 60 запросов в минуту на «Команде», 300 на «Бизнесе», 1000 на «Корпоративном». При превышении лимита API возвращает код 429, а заблокированные запросы не тарифицируются. Повысить лимит на тарифах «Команда» и «Бизнес» нельзя; на тарифе «Корпоративный» лимит может быть увеличен по договорённости.\n\n---\n\n[chunk_id=01_tarify_rf.md#3] Тарифы Сорока CRM для России | раздел: Тариф «Бизнес»\nТариф «Бизнес» рассчитан на команды до 100 пользователей. Стоимость — 12 990 ₽ в месяц. В тариф входят 500 ГБ файлового хранилища и неограниченное количество воронок продаж. Доступен REST API с лимитом 300 запросов в минуту. Доступны роли и гибкие права доступа, журнал аудита и интеграция с 1С. Персональный менеджер в тариф «Бизнес» не входит.\n\n---\n\n[chunk_id=02_tarify_kz.md#3] Тарифы Сорока CRM для Казахстана | раздел: Тариф «Бизнес» (Казахстан)\nТариф «Бизнес» для Казахстана рассчитан на команды до 100 пользователей. Стоимость — 69 900 ₸ в месяц. В тариф входят 500 ГБ файлового хранилища, неограниченное количество воронок продаж, REST API с лимитом 300 запросов в минуту и журнал аудита. Интеграция с 1С для казахстанских клиентов доступна с тарифа «Бизнес».\n\n---\n\n[chunk_id=08_integracii.md#1] API и интеграции | раздел: Вебхуки\nВебхуки позволяют получать уведомления о событиях в CRM: создании сделки, смене этапа, новой задаче. На тарифе «Команда» можно настроить до 10 вебхуков, на тарифе «Бизнес» — до 50, на тарифе «Корпоративный» количество не ограничено. Если внешний сервер не ответил, доставка повторяется 3 раза: через 5, 15 и 60 минут.\n\n---\n\n[chunk_id=08_integracii.md#5] API и интеграции | раздел: Email-рассылки\nМассовые email-рассылки доступны на тарифах «Бизнес» и «Корпоративный». На тарифе «Бизнес» можно отправить до 10 000 писем в месяц, на тарифе «Корпоративный» — до 100 000 писем в месяц. Неотправленный лимит на следующий месяц не переносится.\n\n---\n\n[chunk_id=01_tarify_rf.md#2] Тарифы Сорока CRM для России | раздел: Тариф «Команда»\nТариф «Команда» рассчитан на команды до 25 пользователей. Стоимость — 4 990 ₽ в месяц. В тариф входят 100 ГБ файлового хранилища и до 10 воронок продаж. Доступен REST API с лимитом 60 запросов в минуту. Доступны интеграции с телефонией и Telegram. Докупить пользователей сверх 25 на тарифе «Команда» нельзя: для расширения команды нужно перейти на тариф «Бизнес».\n\n---\n\n[chunk_id=11_funkcii.md#0] Возможности Сорока CRM | раздел: Воронки продаж и сделки\nСделки ведутся в воронках с настраиваемыми этапами. Количество воронок зависит от тарифа: одна на «Старте», до 10 на «Команде», без ограничений на «Бизнесе» и «Корпоративном». Для каждого этапа можно задать обязательные поля и автоматические действия.\n\n---\n\n[chunk_id=11_funkcii.md#1] Возможности Сорока CRM | раздел: Автоматизации\nАвтоматизации запускают действия при наступлении событий: создать задачу, отправить письмо, сменить ответственного. На тарифе «Команда» доступно до 20 активных автоматизаций, на тарифе «Бизнес» — до 200, на тарифе «Корпоративный» — без ограничений. На тарифе «Старт» автоматизации недоступны."
+  },
+  {
+   "role": "assistant",
+   "content": null,
+   "tool_calls": [
+    {
+     "id": "call_b7ce498c1f084e928452b5327f71b4de",
+     "type": "function",
+     "function": {
+      "name": "search_corpus",
+      "arguments": "{\"query\":\"REST API лимиты изменения архив редакция запросов минуту Бизнес\",\"k\":5}"
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "tool_call_id": "call_b7ce498c1f084e928452b5327f71b4de",
+   "content": "[chunk_id=08_integracii.md#0] API и интеграции | раздел: REST API\nREST API доступен начиная с тарифа «Команда». Лимиты запросов зависят от тарифа: 60 запросов в минуту на «Команде», 300 на «Бизнесе», 1000 на «Корпоративном». При превышении лимита API возвращает код 429, а заблокированные запросы не тарифицируются. Повысить лимит на тарифах «Команда» и «Бизнес» нельзя; на тарифе «Корпоративный» лимит может быть увеличен по договорённости.\n\n---\n\n[chunk_id=01_tarify_rf.md#3] Тарифы Сорока CRM для России | раздел: Тариф «Бизнес»\nТариф «Бизнес» рассчитан на команды до 100 пользователей. Стоимость — 12 990 ₽ в месяц. В тариф входят 500 ГБ файлового хранилища и неограниченное количество воронок продаж. Доступен REST API с лимитом 300 запросов в минуту. Доступны роли и гибкие права доступа, журнал аудита и интеграция с 1С. Персональный менеджер в тариф «Бизнес» не входит.\n\n---\n\n[chunk_id=02_tarify_kz.md#3] Тарифы Сорока CRM для Казахстана | раздел: Тариф «Бизнес» (Казахстан)\nТариф «Бизнес» для Казахстана рассчитан на команды до 100 пользователей. Стоимость — 69 900 ₸ в месяц. В тариф входят 500 ГБ файлового хранилища, неограниченное количество воронок продаж, REST API с лимитом 300 запросов в минуту и журнал аудита. Интеграция с 1С для казахстанских клиентов доступна с тарифа «Бизнес».\n\n---\n\n[chunk_id=08_integracii.md#1] API и интеграции | раздел: Вебхуки\nВебхуки позволяют получать уведомления о событиях в CRM: создании сделки, смене этапа, новой задаче. На тарифе «Команда» можно настроить до 10 вебхуков, на тарифе «Бизнес» — до 50, на тарифе «Корпоративный» количество не ограничено. Если внешний сервер не ответил, доставка повторяется 3 раза: через 5, 15 и 60 минут.\n\n---\n\n[chunk_id=09_bezopasnost.md#1] Безопасность и хранение данных | раздел: Резервное копирование\nРезервные копии всех данных создаются ежедневно. На тарифах «Старт», «Команда» и «Бизнес» резервные копии хранятся 30 дней, на тарифе «Корпоративный» — 90 дней. Резервные копии хранятся в другом центре обработки данных того же региона."
+  }
+ ],
+ "chunks": [
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "role": "assistant"
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "id": "call_68ea8ca6609e40fab91f67a7e04d30ba",
+        "function": {
+         "arguments": "",
+         "name": "submit_critique"
+        },
+        "type": "function"
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "{\""
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "reason"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "ing"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "\":\""
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "Вер"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "дик"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "т"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " SUP"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "PORTED"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " об"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "осн"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "ован"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "."
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " Раз"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "дел"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " REST"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " API"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " прямо"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " устанавли"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "вает"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " для"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " «"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "Б"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "изнес"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "а"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "»"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " лим"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "ит"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " "
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "300"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " запрос"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "ов"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " в"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " минут"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "у"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": ";"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " тариф"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "ные"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " страницы"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " России"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " и"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " Казахстан"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "а"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " независимо"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " подтверж"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "дают"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " то"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " же"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " число"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " и"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " еди"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "ницу"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " измер"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "ения"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "."
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " Не"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "оп"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "редел"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "ён"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "ность"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " страны"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " клиента"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " не"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " меня"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "ет"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " вывод"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": ","
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " поскольку"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " в"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " обо"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "их"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " регион"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "альных"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " источ"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "никах"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " лим"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "ит"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " совп"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "адает"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "."
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " По"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "иск"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " не"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " выяв"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "ил"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " иной"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " редак"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "ции"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " или"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " исключ"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "ений"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": ","
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " против"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "ор"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "еч"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "ащ"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "их"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " утверж"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "д"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "ению"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "."
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " У"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "словия"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " о"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " код"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "е"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " "
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "429"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " при"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " превыш"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "ении"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " и"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " невозмож"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "ности"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " повыс"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "ить"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " лим"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "ит"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " на"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " «"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "Б"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "изнес"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "е"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "»"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " соглас"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "уются"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " с"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " ним"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " и"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " не"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " требуют"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " ог"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "овор"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "ки"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " в"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " провер"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "яем"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "ом"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " предлож"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "ении"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "."
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " Все"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " цит"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "аты"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " аналит"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "ика"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " прош"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "ли"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " программ"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "ную"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " провер"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "ку"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "."
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " Ош"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "иб"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "ок"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": ","
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " треб"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "ующих"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " изменения"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " вер"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "дик"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "та"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": ","
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " не"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " обнаруж"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "ено"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": ".\",\""
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "stance"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "\":\""
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "AG"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "REE"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "\",\""
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "suggest"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "ed"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "_ver"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "dict"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "\":"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "null"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": ",\""
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "issues"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "\":"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "[]}"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [
+    {
+     "delta": {
+      "content": ""
+     },
+     "index": 0,
+     "finish_reason": "tool_calls"
+    }
+   ],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "default"
+  },
+  {
+   "id": "resp_06125c89609fbe98016aef41d454cc87d197bba8d9cb0591b6",
+   "choices": [],
+   "created": 1794064852,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "default",
+   "usage": {
+    "completion_tokens": 198,
+    "prompt_tokens": 8060,
+    "total_tokens": 8258,
+    "prompt_tokens_details": {
+     "cached_tokens": 7296
+    }
+   },
+   "tool_usage": {
+    "image_gen": {
+     "input_tokens": 0,
+     "output_tokens": 0,
+     "total_tokens": 0,
+     "input_tokens_details": {
+      "text_tokens": 0,
+      "image_tokens": 0
+     },
+     "output_tokens_details": {
+      "image_tokens": 0,
+      "text_tokens": 0
+     }
+    },
+    "web_search": {
+     "num_requests": 0
+    }
+   }
+  }
+ ]
+}

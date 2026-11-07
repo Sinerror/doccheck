@@ -3,17 +3,22 @@
 import type {
   AnalystRevision,
   AnalystVerdict,
-  ClaimWithQueries,
+  Claim,
   Critique,
   GroundingCheck,
   Metrics,
   RagRetrieval,
-  ScoutPaperFound,
   DocCheckEvent,
 } from "../types/events";
 
-export type StageName = "ingest" | "scout" | "index" | "analyze" | "report";
-export const STAGES: StageName[] = ["ingest", "scout", "index", "analyze", "report"];
+export type StageName = "ingest" | "scout" | "analyze" | "report";
+export const STAGES: StageName[] = ["ingest", "scout", "analyze", "report"];
+export const STAGE_LABEL: Record<StageName, string> = {
+  ingest: "индексация",
+  scout: "утверждения",
+  analyze: "проверка",
+  report: "отчёт",
+};
 export type StageStatus = "pending" | "active" | "done";
 export type Role = "scout" | "analyst" | "critic" | "system";
 
@@ -32,6 +37,7 @@ export interface ClaimState {
   text: string;
   type: string;
   section: string;
+  quote: string;
   phase: "waiting" | "analyst" | "critic" | "done";
   activeRole?: Role;
   round: number;
@@ -40,11 +46,14 @@ export interface ClaimState {
   criticText: string;
   criticTools: { name: string; summary: string; seq: number }[];
   rounds: RoundState[];
-  final?: { status: "accepted" | "revised" | "disputed"; verdict: string };
+  final?: { status: "accepted" | "revised" | "disputed"; verdict: string; correction?: string | null };
   error?: string;
 }
 
-export interface PaperState extends ScoutPaperFound {
+/** A source document (corpus) or the document under check ("target"). Keyed by doc_id. */
+export interface PaperState {
+  paper_id: string;
+  title: string;
   chunks?: number;
   source: "target" | "related";
   order: number; // order of appearance → stable color slot
@@ -91,6 +100,8 @@ export interface RunState {
   retrievalCount: number;
   metrics?: Metrics;
   maxDebateRound: number;
+  documentContext?: string;
+  corpusReused?: boolean;
   activeRoles: Record<Role, number>; // how many agents of each role are currently working
   agents: Record<string, AgentInstance>; // distinct (role, claim) instances seen in agent.started
   pulses: Pulse[];
@@ -106,7 +117,7 @@ export function initialState(runId: string): RunState {
   return {
     runId,
     status: "connecting",
-    stages: { ingest: "pending", scout: "pending", index: "pending", analyze: "pending", report: "pending" },
+    stages: { ingest: "pending", scout: "pending", analyze: "pending", report: "pending" },
     claims: {},
     claimOrder: [],
     papers: {},
@@ -172,18 +183,8 @@ export function reduce(state: RunState, ev: DocCheckEvent): RunState {
     case "run.started": {
       const d = ev.data;
       s = { ...s, target: d.target, params: d.params, models: d.models };
-      const pid = String(d.target.paper_id ?? "target");
-      s.papers = {
-        ...s.papers,
-        [pid]: {
-          paper_id: pid,
-          title: String(d.target.title ?? pid),
-          year: (d.target.year as number) ?? null,
-          url: (d.target.url as string) ?? null,
-          source: "target",
-          order: -1,
-        },
-      };
+      const pid = String(d.target.doc_id ?? "target");
+      s.papers = { ...s.papers, [pid]: { paper_id: pid, title: String(d.target.title ?? pid), source: "target", order: -1 } };
       break;
     }
     case "stage.started":
@@ -196,13 +197,14 @@ export function reduce(state: RunState, ev: DocCheckEvent): RunState {
       const claims = { ...s.claims };
       const order: string[] = [];
       for (const raw of ev.data.claims) {
-        const c = raw as unknown as ClaimWithQueries;
+        const c = raw as unknown as Claim;
         order.push(c.id);
         claims[c.id] = {
           id: c.id,
           text: c.text,
           type: c.type,
-          section: c.section,
+          section: c.section ?? "",
+          quote: c.quote ?? "",
           phase: "waiting",
           round: 0,
           analystText: "",
@@ -212,29 +214,25 @@ export function reduce(state: RunState, ev: DocCheckEvent): RunState {
           rounds: [],
         };
       }
-      s = { ...s, claims, claimOrder: order };
-      break;
-    }
-    case "scout.query":
-      s = { ...s, queries: s.queries + 1, candidatesScanned: s.candidatesScanned + (ev.data.hits ?? 0) };
-      break;
-    case "scout.paper_found": {
-      const order = s.paperOrder.length;
-      s = {
-        ...s,
-        papers: { ...s.papers, [ev.data.paper_id]: { ...ev.data, source: "related", order } },
-        paperOrder: [...s.paperOrder, ev.data.paper_id],
-      };
+      s = { ...s, claims, claimOrder: order, documentContext: ev.data.document_context ?? "" };
       break;
     }
     case "rag.indexed": {
-      const p = s.papers[ev.data.paper_id];
-      s = {
-        ...s,
-        totalPoints: ev.data.total_points,
-        papers: p ? { ...s.papers, [p.paper_id]: { ...p, chunks: ev.data.chunks } } : s.papers,
-        pulses: pulse(s, "scout-qdrant", ev.seq),
-      };
+      const d = ev.data;
+      const existing = s.papers[d.doc_id];
+      if (d.source === "document") {
+        const t = existing ?? { paper_id: d.doc_id, title: d.title ?? d.doc_id, source: "target" as const, order: -1 };
+        s = { ...s, papers: { ...s.papers, [d.doc_id]: { ...t, chunks: d.chunks } } };
+      } else {
+        const order = existing?.order ?? s.paperOrder.length;
+        s = {
+          ...s,
+          papers: { ...s.papers, [d.doc_id]: { paper_id: d.doc_id, title: d.title ?? d.doc_id, source: "related", order, chunks: d.chunks } },
+          paperOrder: existing ? s.paperOrder : [...s.paperOrder, d.doc_id],
+          corpusReused: d.reused,
+        };
+      }
+      s = { ...s, totalPoints: d.total_points, pulses: pulse(s, "scout-qdrant", ev.seq) };
       break;
     }
     case "rag.retrieval": {
@@ -330,7 +328,7 @@ export function reduce(state: RunState, ev: DocCheckEvent): RunState {
         ...c,
         phase: "done",
         activeRole: undefined,
-        final: { status: ev.data.status, verdict: ev.data.verdict },
+        final: { status: ev.data.status, verdict: ev.data.verdict, correction: ev.data.correction },
       }));
       s = { ...s, pulses: pulse(s, "critic-report", ev.seq, ev.data.claim_id) };
       break;

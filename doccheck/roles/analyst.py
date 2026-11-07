@@ -16,13 +16,14 @@ async def gather_context(ctx: RunCtx, claim: Claim) -> list[Hit]:
     return await ctx.search(claim.text, CONTEXT_K, "corpus", "analyst", claim.id)
 
 
-def _claim_vars(claim: Claim) -> dict:
+def _claim_vars(claim: Claim, ctx: RunCtx) -> dict:
     return {"claim_id": claim.id, "claim_type": claim.type.value, "claim_text": claim.text,
-            "claim_quote": claim.quote}
+            "claim_quote": claim.quote, "document_title": ctx.title,
+            "document_context": ctx.doc_context or "(не указан)"}
 
 
 async def analyze(ctx: RunCtx, claim: Claim, hits: list[Hit]) -> AnalystVerdict:
-    system, user = load_prompt("analyst", context=fmt_context(hits), document_title=ctx.title, **_claim_vars(claim))
+    system, user = load_prompt("analyst", context=fmt_context(hits), **_claim_vars(claim, ctx))
     return await ctx.llm.structured(role="analyst", model=ctx.settings.analyst_model, system=system, user=user,
                                     schema=AnalystVerdict, tool_name="submit_verdict",
                                     tool_description="Submit the verdict for this claim.",
@@ -35,7 +36,7 @@ async def revise(ctx: RunCtx, claim: Claim, hits: list[Hit], previous: AnalystVe
     system, user = load_prompt(
         "analyst_revise", context=fmt_context(hits), previous=jsonish(previous.model_dump(mode="json")),
         prev_round=prev_round, grounding=jsonish(grounding), critique=jsonish(critique.model_dump(mode="json")),
-        document_title=ctx.title, **_claim_vars(claim))
+        **_claim_vars(claim, ctx))
     return await ctx.llm.structured(role="analyst", model=ctx.settings.analyst_model, system=system, user=user,
                                     schema=AnalystRevision, tool_name="submit_revision",
                                     tool_description="Submit the revised verdict.",

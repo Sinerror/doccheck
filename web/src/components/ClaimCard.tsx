@@ -1,7 +1,7 @@
 import { AnimatePresence, motion } from "framer-motion";
 import type { Evidence, Issue } from "../types/events";
 import { paperOf, type ClaimState, type RoundState } from "../state/runReducer";
-import { SEVERITY_COLOR } from "../lib/colors";
+import { CLAIM_TYPE_RU, SEVERITY_COLOR } from "../lib/colors";
 import { RoleDot, StatusBadge, VerdictBadge } from "./Badges";
 import { Typewriter } from "./Typewriter";
 
@@ -48,7 +48,7 @@ function EvidenceRow({ e, round, issues }: { e: Evidence; round: RoundState; iss
         <span
           className="mt-px shrink-0 font-mono text-[11px]"
           style={{ color: g === undefined ? "#6b7685" : ok ? "#0ca30c" : "#d03b3b" }}
-          title={g ? `grounding partial_ratio=${g.score} (${ok ? "verbatim" : "UNGROUNDED"})` : "grounding pending"}
+          title={g ? `проверка цитаты: partial_ratio=${g.score} (${ok ? "дословно" : "НЕ НАЙДЕНА"})` : "проверка цитаты…"}
         >
           {g === undefined ? "…" : ok ? "✓" : "✗"}
         </span>
@@ -94,7 +94,8 @@ export function ClaimCard({ c }: { c: ClaimState }) {
         <div className="min-w-0 flex-1">
           <p className="text-[13px] leading-snug text-ink">{c.text}</p>
           <div className="mt-1 font-mono text-[10px] text-ink-3">
-            {c.type} · {c.section}
+            {CLAIM_TYPE_RU[c.type] ?? c.type}
+            {c.section ? ` · ${c.section}` : ""}
           </div>
         </div>
         {c.final ? (
@@ -102,7 +103,7 @@ export function ClaimCard({ c }: { c: ClaimState }) {
         ) : (
           <span className="flex items-center gap-1.5 font-mono text-[10px] text-ink-3">
             {working && <RoleDot color={roleColor} pulsing />}
-            {c.phase === "waiting" ? "queued" : `${c.phase} · r${c.round}`}
+            {c.phase === "waiting" ? "в очереди" : `${c.phase} · r${c.round}`}
           </span>
         )}
       </header>
@@ -117,7 +118,7 @@ export function ClaimCard({ c }: { c: ClaimState }) {
               </motion.span>
             ))}
           </AnimatePresence>
-          {latest?.analyst && <span className="font-mono text-[10px] text-ink-3">conf {latest.analyst.confidence.toFixed(2)}</span>}
+          {latest?.analyst && <span className="font-mono text-[10px] text-ink-3">уверенность {latest.analyst.confidence.toFixed(2)}</span>}
         </div>
       )}
 
@@ -136,7 +137,7 @@ export function ClaimCard({ c }: { c: ClaimState }) {
           </div>
           {latest?.analyst?.response_to_critic && (
             <div className="scroll-thin mt-1 max-h-24 overflow-y-auto border-t border-line/60 pt-1 text-[11.5px] text-ink-2">
-              <span className="font-mono text-[10px] text-violet">↩ to critic: </span>
+              <span className="font-mono text-[10px] text-violet">↩ критику: </span>
               {latest.analyst.response_to_critic}
             </div>
           )}
@@ -214,10 +215,16 @@ export function ClaimCard({ c }: { c: ClaimState }) {
           ))}
         </footer>
       )}
+      {c.final?.correction && (
+        <div className="rounded-md border border-green-600/50 px-2 py-1 text-[12px] text-ink-2">
+          <span className="font-mono text-[10px] text-green-400">ПО ИСТОЧНИКАМ: </span>
+          {c.final.correction}
+        </div>
+      )}
       {c.final?.status === "disputed" && (
         <div className="rounded-md border border-critical/60 px-2 py-1 text-[11.5px] text-ink-2">
-          ⚑ Disputed: analyst holds <b className="text-ink">{c.final.verdict}</b>, critic suggests{" "}
-          <b className="text-ink">{critique?.suggested_verdict ?? "a different verdict"}</b>. Both positions shown.
+          ⚑ Спорное: аналитик — <b className="text-ink">{c.final.verdict}</b>, критик предлагает{" "}
+          <b className="text-ink">{critique?.suggested_verdict ?? "другой вердикт"}</b>. Решает человек.
         </div>
       )}
       {c.error && <div className="rounded-md border border-critical/60 px-2 py-1 font-mono text-[11px] text-red">error: {c.error}</div>}
@@ -229,7 +236,7 @@ export function ClaimLanes({ claims }: { claims: ClaimState[] }) {
   if (!claims.length)
     return (
       <div className="panel flex h-40 items-center justify-center font-mono text-[12px] text-ink-3">
-        waiting for scout.claims…
+        ждём утверждения от Scout…
       </div>
     );
   return (

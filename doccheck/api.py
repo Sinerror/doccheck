@@ -302,6 +302,8 @@ if _DIST.is_dir():
 
     @app.get("/{path:path}", include_in_schema=False)
     async def spa(path: str):
+        if path.startswith("api/"):  # unknown API paths must not fall through to index.html
+            raise HTTPException(404, "not found")
         f = (_DIST / path).resolve()
         if path and f.is_file() and _DIST.resolve() in f.parents:
             return FileResponse(f)

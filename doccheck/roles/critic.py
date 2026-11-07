@@ -87,6 +87,7 @@ async def critique(ctx: RunCtx, claim: Claim, verdict: AnalystVerdict, grounding
     system, user = load_prompt(
         "critic", max_iters=max_iters, claim_id=claim.id, claim_type=claim.type.value,
         claim_text=claim.text, claim_quote=claim.quote, document_title=ctx.title, round=round_,
+        document_context=ctx.doc_context or "(не указан)",
         verdict=jsonish(verdict.model_dump(mode="json")), grounding=jsonish(grounding),
         context_ids="\n".join(f"- {h.chunk_id} ({h.payload.get('title')} / {h.payload.get('section')})" for h in hits))
     model = ctx.settings.critic_model

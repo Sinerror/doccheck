@@ -8,7 +8,7 @@ import { VectorSpace } from "./components/VectorSpace";
 import { EvidenceGraph } from "./components/EvidenceGraph";
 import { EventLog } from "./components/EventLog";
 import { ReportView } from "./components/ReportView";
-import { STAGES } from "./state/runReducer";
+import { STAGES, STAGE_LABEL } from "./state/runReducer";
 
 export function RunPage({ runId, mode, speed, onHome, onMode }: {
   runId: string;
@@ -22,14 +22,16 @@ export function RunPage({ runId, mode, speed, onHome, onMode }: {
   const [showReport, setShowReport] = useState(false);
   const autoOpened = useRef(false);
 
-  // open the report once the run finishes (live, or when a replay reaches run.finished)
+  // open the report once the run finishes (live, or when a replay reaches run.finished); `report=0` in the
+  // hash keeps it closed (used for screenshots of the run view)
+  const autoReport = !/[?&]report=0/.test(window.location.hash);
   useEffect(() => {
-    if (state.status === "finished" && !autoOpened.current) {
+    if (state.status === "finished" && !autoOpened.current && autoReport) {
       autoOpened.current = true;
       const t = setTimeout(() => setShowReport(true), 1200);
       return () => clearTimeout(t);
     }
-  }, [state.status]);
+  }, [state.status, autoReport]);
   useEffect(() => {
     autoOpened.current = false;
     setShowReport(false);
@@ -53,13 +55,13 @@ export function RunPage({ runId, mode, speed, onHome, onMode }: {
             }}
           >
             {state.stages[s] === "done" ? "✓ " : state.stages[s] === "active" ? "● " : ""}
-            {s}
+            {STAGE_LABEL[s]}
           </span>
         ))}
         <span className="ml-auto flex items-center gap-2 text-ink-3">
           {mode === "replay" ? (
             <>
-              replay speed
+              скорость
               {[1, 4, 16].map((sp) => (
                 <button
                   key={sp}
@@ -71,12 +73,12 @@ export function RunPage({ runId, mode, speed, onHome, onMode }: {
                 </button>
               ))}
               <button onClick={() => setNonce((n) => n + 1)} className="rounded border border-line px-1.5 hover:text-ink">
-                ↺ restart
+                ↺ заново
               </button>
             </>
           ) : (
             <button onClick={() => onMode("replay", 4)} className="rounded border border-line px-1.5 hover:text-ink" disabled={state.status === "running"}>
-              open as replay
+              открыть как replay
             </button>
           )}
         </span>
@@ -84,7 +86,7 @@ export function RunPage({ runId, mode, speed, onHome, onMode }: {
 
       {fatal && (
         <div className="panel border-critical/70 px-4 py-2 font-mono text-[12px] text-red">
-          run failed: {fatal.message}
+          прогон упал: {fatal.message}
         </div>
       )}
       {info.error && mode === "replay" && !info.ended && (
@@ -95,7 +97,8 @@ export function RunPage({ runId, mode, speed, onHome, onMode }: {
 
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-[300px_minmax(0,1fr)] xl:grid-cols-[300px_minmax(0,1fr)_380px]">
         <aside className="panel flex flex-col gap-2 p-3 lg:sticky lg:top-3 lg:max-h-[calc(100vh-90px)]">
-          <div className="panel-title">Pipeline</div>
+          <div className="panel-title">Конвейер</div>
+          {state.documentContext && <div className="text-[11.5px] leading-snug text-ink-3">{state.documentContext}</div>}
           <PipelineGraph state={state} />
           <PaperList state={state} />
         </aside>

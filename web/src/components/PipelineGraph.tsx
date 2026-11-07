@@ -157,13 +157,13 @@ export function PipelineGraph({ state }: { state: RunState }) {
       {
         id: "scout", type: "stage", position: { x: 54, y: 0 }, draggable: false,
         data: { label: "SCOUT", sub: shortModel(m.scout), color: COLOR.scout, active: st.scout === "active" || state.activeRoles.scout > 0,
-          count: state.claimOrder.length ? `${state.claimOrder.length} claims · ${state.paperOrder.length} papers` : undefined,
+          count: state.claimOrder.length ? `${state.claimOrder.length} утвержд. · ${state.paperOrder.length} источн.` : undefined,
           doneColor: st.scout === "done" ? "#22d3ee55" : undefined },
       },
       {
         id: "qdrant", type: "stage", position: { x: 54, y: 84 }, draggable: false,
-        data: { label: "QDRANT", sub: "dense + bm25 · RRF", color: COLOR.scout, active: st.index === "active" || st.ingest === "active" || recentRetrieval,
-          count: state.totalPoints ? `${state.totalPoints} chunks` : undefined },
+        data: { label: "QDRANT", sub: "dense + bm25 · RRF", color: COLOR.scout, active: st.ingest === "active" || recentRetrieval,
+          count: state.totalPoints ? `${state.totalPoints} фрагм.` : undefined },
       },
     ];
     claims.forEach((c, i) => {

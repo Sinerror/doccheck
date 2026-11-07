@@ -194,6 +194,10 @@ class LLM:
                                   "stream_options": {"include_usage": True}}
         if tools:
             kwargs["tools"] = tools
+            if self.is_local(model) and isinstance(tool_choice, dict):
+                # LM Studio / llama.cpp servers accept only "none" | "auto" | "required". With the single tool
+                # of a structured call, "required" forces the same function.
+                tool_choice = "required" if len(tools) == 1 else "auto"
             kwargs["tool_choice"] = tool_choice
         if extra:
             kwargs["extra_body"] = extra

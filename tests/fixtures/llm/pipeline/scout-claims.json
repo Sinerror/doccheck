@@ -1,0 +1,249 @@
+{
+ "model": "gpt-6-luna",
+ "messages": [
+  {
+   "role": "system",
+   "content": "Ты — SCOUT, первый этап проверки документа по корпоративным источникам компании (тарифы, оферта, SLA, регламенты, справка о продукте).\nТебе дают документ, который сотрудник собирается отправить наружу: ответ клиенту, коммерческое предложение, памятку. Твоя задача — выписать из него проверяемые утверждения о продукте, ценах и условиях, чтобы каждое затем сверили с источниками.\n\nПравила:\n- Не больше 3 утверждений. Бери все утверждения о фактах, которые можно подтвердить или опровергнуть по документам компании: цены, лимиты, проценты, сроки, даты, условия («при оплате на год», «только для…»), что входит в тариф или доступно в регионе, ссылки на пункты договора/оферты, гарантии и обещания клиенту.\n- Не бери приветствия, благодарности, мнения и рекомендации («мы рекомендуем»), факты о самом клиенте («прошло 20 дней с вашей оплаты»), призывы к действию.\n- Одно утверждение — один проверяемый факт. Если в предложении два независимых факта (например, цена и лимит API), можно разделить их на два утверждения. Не объединяй разные предложения.\n- `text` — самодостаточная формулировка: подставь то, о чём речь, если в предложении это подразумевается («на вашем тарифе» → «на тарифе «Команда»», «для вас» → «для клиентов из Казахстана», если это следует из документа). Числа, единицы, названия тарифов и номера пунктов переписывай ТОЧНО как в документе, ничего не исправляй и не округляй — ошибки в документе как раз и нужно поймать. Не добавляй в `text` своих пояснений, толкований и оговорок в скобках, которых нет в документе.\n- `quote` — дословное предложение документа, из которого взято утверждение.\n- `type`: number (цена, лимит, количество, процент), deadline (срок, дата, время, период), condition (условие применения), reference (ссылка на пункт/раздел документа), feature (что входит/доступно), other.\n- `section` — заголовок части документа, если есть, иначе пустая строка.\n- `document_context` — 1–2 предложения: тип документа, кому он адресован, страна клиента (Россия / Казахстан), если она следует из текста (ООО/ТОО, рубли/тенге, обращение), и о каком тарифе идёт речь. Этот контекст увидят проверяющие вместе с каждым утверждением.\n- Сначала коротко `reasoning`."
+  },
+  {
+   "role": "user",
+   "content": "Документ: d05_otvet_api\n\n=== ТЕКСТ ДОКУМЕНТА ===\n## d05_otvet_api\nДобрый день, Дмитрий!\nОтвечаю на вопросы вашего разработчика по API.\nREST API доступен на всех тарифах, включая «Старт».\nНа тарифе «Бизнес» лимит составляет 300 запросов в минуту.\nЕсли этого не хватит, лимит на тарифе «Бизнес» можно повысить за дополнительную плату.\nПри превышении лимита API возвращает код 429, и такие запросы не тарифицируются.\nНа тарифе «Бизнес» можно настроить до 50 вебхуков.\nЕсли ваш сервер не ответит, мы повторим доставку вебхука 5 раз.\nСинхронизация с 1С выполняется в реальном времени, сразу после каждого изменения.\nЕсли останутся вопросы — пишите. Служба поддержки Сорока CRM\n\nВыпиши до 3 проверяемых утверждений через инструмент `submit_claims`."
+  }
+ ],
+ "chunks": [
+  {
+   "id": "chatcmpl-ijnR1JOT3DmN5C2YwlxemGaS8BqAe",
+   "choices": [
+    {
+     "delta": {
+      "content": "",
+      "role": "assistant"
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064798,
+   "model": "gpt-6-luna",
+   "object": "chat.completion.chunk"
+  },
+  {
+   "id": "chatcmpl-ijnR1JOT3DmN5C2YwlxemGaS8BqAe",
+   "choices": [
+    {
+     "delta": {
+      "content": "**reasoning:** Выделены три провер"
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064798,
+   "model": "gpt-6-luna",
+   "object": "chat.completion.chunk",
+   "message_id": "b49def7b-fa08-4b67-961f-1f3f024b3813",
+   "conversation_id": "6aef4197-59a0-83ea-802b-cc229c57da6a"
+  },
+  {
+   "id": "chatcmpl-ijnR1JOT3DmN5C2YwlxemGaS8BqAe",
+   "choices": [
+    {
+     "delta": {
+      "content": "яемых утверждения с количе"
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064798,
+   "model": "gpt-6-luna",
+   "object": "chat.completion.chunk",
+   "message_id": "b49def7b-fa08-4b67-961f-1f3f024b3813",
+   "conversation_id": "6aef4197-59a0-83ea-802b-cc229c57da6a"
+  },
+  {
+   "id": "chatcmpl-ijnR1JOT3DmN5C2YwlxemGaS8BqAe",
+   "choices": [
+    {
+     "delta": {
+      "content": "ственными параметрами и условиями доступности API. Страна клиента по тексту не определяется."
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064798,
+   "model": "gpt-6-luna",
+   "object": "chat.completion.chunk",
+   "message_id": "b49def7b-fa08-4b67-961f-1f3f024b3813",
+   "conversation_id": "6aef4197-59a0-83ea-802b-cc229c57da6a"
+  },
+  {
+   "id": "chatcmpl-ijnR1JOT3DmN5C2YwlxemGaS8BqAe",
+   "choices": [
+    {
+     "delta": {
+      "content": " Тарифы «Старт» и «Бизнес».\n\nИнструмент `submit_claims` в доступных инструментах отсутствует, поэтому передаю результат напрямую:\n\n<escape"
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064798,
+   "model": "gpt-6-luna",
+   "object": "chat.completion.chunk",
+   "message_id": "b49def7b-fa08-4b67-961f-1f3f024b3813",
+   "conversation_id": "6aef4197-59a0-83ea-802b-cc229c57da6a"
+  },
+  {
+   "id": "chatcmpl-ijnR1JOT3DmN5C2YwlxemGaS8BqAe",
+   "choices": [
+    {
+     "delta": {
+      "content": ">{\n  \"document_context\": \"Ответ клиенту на вопросы разработчика об API"
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064798,
+   "model": "gpt-6-luna",
+   "object": "chat.completion.chunk",
+   "message_id": "b49def7b-fa08-4b67-961f-1f3f024b3813",
+   "conversation_id": "6aef4197-59a0-83ea-802b-cc229c57da6a"
+  },
+  {
+   "id": "chatcmpl-ijnR1JOT3DmN5C2YwlxemGaS8BqAe",
+   "choices": [
+    {
+     "delta": {
+      "content": " продукта Сорока CRM. Страна клиента не определяется по тексту. Уп"
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064798,
+   "model": "gpt-6-luna",
+   "object": "chat.completion.chunk",
+   "message_id": "b49def7b-fa08-4b67-961f-1f3f024b3813",
+   "conversation_id": "6aef4197-59a0-83ea-802b-cc229c57da6a"
+  },
+  {
+   "id": "chatcmpl-ijnR1JOT3DmN5C2YwlxemGaS8BqAe",
+   "choices": [
+    {
+     "delta": {
+      "content": "оминаются тарифы «Старт» и «Бизнес».\",\n  \"claims\": [\n    {\n      \"text\": \"REST API доступ"
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064798,
+   "model": "gpt-6-luna",
+   "object": "chat.completion.chunk",
+   "message_id": "b49def7b-fa08-4b67-961f-1f3f024b3813",
+   "conversation_id": "6aef4197-59a0-83ea-802b-cc229c57da6a"
+  },
+  {
+   "id": "chatcmpl-ijnR1JOT3DmN5C2YwlxemGaS8BqAe",
+   "choices": [
+    {
+     "delta": {
+      "content": "ен на всех тарифах, включая «Старт».\",\n      \"quote\": \"REST API доступен на всех тарифах, включая «Старт».\",\n"
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064798,
+   "model": "gpt-6-luna",
+   "object": "chat.completion.chunk",
+   "message_id": "b49def7b-fa08-4b67-961f-1f3f024b3813",
+   "conversation_id": "6aef4197-59a0-83ea-802b-cc229c57da6a"
+  },
+  {
+   "id": "chatcmpl-ijnR1JOT3DmN5C2YwlxemGaS8BqAe",
+   "choices": [
+    {
+     "delta": {
+      "content": "      \"type\": \"feature\",\n      \"section\": \"d05_otvet_api\"\n    },\n    {\n      \"text\": \"На тарифе «Бизнес» лимит составляет 300 запросов в минуту.\",\n      \"quote\": \"На тарифе"
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064798,
+   "model": "gpt-6-luna",
+   "object": "chat.completion.chunk",
+   "message_id": "b49def7b-fa08-4b67-961f-1f3f024b3813",
+   "conversation_id": "6aef4197-59a0-83ea-802b-cc229c57da6a"
+  },
+  {
+   "id": "chatcmpl-ijnR1JOT3DmN5C2YwlxemGaS8BqAe",
+   "choices": [
+    {
+     "delta": {
+      "content": " «Бизнес» лимит составляет 300 запросов в минуту.\",\n      \"type\": \"number\",\n      \"section\": \"d05_otvet_api\"\n    },\n    {\n      \"text"
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064798,
+   "model": "gpt-6-luna",
+   "object": "chat.completion.chunk",
+   "message_id": "b49def7b-fa08-4b67-961f-1f3f024b3813",
+   "conversation_id": "6aef4197-59a0-83ea-802b-cc229c57da6a"
+  },
+  {
+   "id": "chatcmpl-ijnR1JOT3DmN5C2YwlxemGaS8BqAe",
+   "choices": [
+    {
+     "delta": {
+      "content": "\": \"На тарифе «Бизнес» можно настроить до 50 вебхуков.\",\n      \"quote\": \"На тарифе «Бизнес» можно настроить до 50 вебхуков.\",\n      \"type\": \"number\",\n      \"section\": \"d05"
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064798,
+   "model": "gpt-6-luna",
+   "object": "chat.completion.chunk",
+   "message_id": "b49def7b-fa08-4b67-961f-1f3f024b3813",
+   "conversation_id": "6aef4197-59a0-83ea-802b-cc229c57da6a"
+  },
+  {
+   "id": "chatcmpl-ijnR1JOT3DmN5C2YwlxemGaS8BqAe",
+   "choices": [
+    {
+     "delta": {
+      "content": "_otvet_api\"\n    }\n  ]\n}</escape>"
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064798,
+   "model": "gpt-6-luna",
+   "object": "chat.completion.chunk",
+   "message_id": "b49def7b-fa08-4b67-961f-1f3f024b3813",
+   "conversation_id": "6aef4197-59a0-83ea-802b-cc229c57da6a"
+  },
+  {
+   "id": "chatcmpl-ijnR1JOT3DmN5C2YwlxemGaS8BqAe",
+   "choices": [
+    {
+     "delta": {},
+     "index": 0,
+     "finish_reason": "stop"
+    }
+   ],
+   "created": 1794064798,
+   "model": "gpt-6-luna",
+   "object": "chat.completion.chunk",
+   "message_id": "b49def7b-fa08-4b67-961f-1f3f024b3813",
+   "conversation_id": "6aef4197-59a0-83ea-802b-cc229c57da6a"
+  },
+  {
+   "id": "chatcmpl-ijnR1JOT3DmN5C2YwlxemGaS8BqAe",
+   "choices": [],
+   "created": 1794064798,
+   "model": "gpt-6-luna",
+   "object": "chat.completion.chunk",
+   "usage": {
+    "completion_tokens": 283,
+    "prompt_tokens": 1274,
+    "total_tokens": 1557
+   }
+  }
+ ]
+}

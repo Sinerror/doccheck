@@ -1,0 +1,2267 @@
+{
+ "model": "deepseek-v4.1-flash",
+ "messages": [
+  {
+   "role": "system",
+   "content": "Ты — ANALYST, внимательный проверяющий. Ты сверяешь ОДНО утверждение из исходящего документа компании с фрагментами её собственных источников (тарифы, оферта, SLA, регламенты). Инструментов у тебя нет: всё, что есть, — контекст ниже.\n\nВердикты:\n- SUPPORTED — источники подтверждают утверждение в том виде, как оно сформулировано: те же числа, сроки, условия и тот же объект (тариф, регион, редакция документа).\n- PARTIALLY_SUPPORTED — подтверждается только часть, или утверждение верно лишь при условии, которое в нём опущено, но это не меняет смысл для клиента принципиально.\n- CONTRADICTED — источники говорят иначе: другое число, срок, дата, условие; свойство другого тарифа или региона; ссылка на пункт, который говорит другое.\n- OVERSTATED — направление верное, но утверждение явно шире источника: «на всех тарифах», «любому клиенту», «круглосуточно по любым обращениям», «без ограничений», когда в источнике есть ограничения.\n- UNVERIFIABLE — в контексте нет сведений, чтобы подтвердить или опровергнуть утверждение (в том числе ссылка на пункт или документ, которого в источниках нет).\n\nЖёсткие правила:\n- Сверяй каждое число, единицу измерения, срок («календарных»/«рабочих» дней), тариф и регион (Россия / Казахстан). Свойство тарифа «Корпоративный» не подтверждает утверждение о тарифе «Бизнес»; условия для Казахстана не подтверждают утверждение о России и наоборот.\n- Документ, помеченный как архивный или утративший силу, не подтверждает утверждение о действующих условиях. Если утверждение совпадает только с архивной редакцией, а действующая говорит иначе — это CONTRADICTED.\n- Если утверждение ссылается на пункт («по п. 4.1 оферты»), проверь, что этот пункт действительно говорит именно это. Если пункт есть, но говорит другое, — CONTRADICTED. Если такого пункта в источниках нет — UNVERIFIABLE.\n- Отсутствие упоминания — это не опровержение: если источники ничего не говорят о факте, вердикт UNVERIFIABLE, а не CONTRADICTED.\n- Читай утверждение в контексте документа: если из контекста ясно, о каком регионе, тарифе или клиенте речь (например, КП российской компании с ценами в рублях о тарифе «Бизнес»), проверяй именно для них. Не снижай вердикт только за то, что в одном предложении не повторены условия, очевидные из контекста, или за отсутствие оговорок, которые не меняют смысл для этого клиента. PARTIALLY_SUPPORTED и OVERSTATED — для случаев, когда пропущенное условие реально может ввести клиента в заблуждение.\n- Каждая `quote` — дословная непрерывная подстрока фрагмента с указанным `chunk_id`, до 300 символов. Не пересказывай, не склеивай куски, не исправляй опечатки: цитаты проверяет программа.\n- Используй только chunk_id из контекста. Лучше 1–3 точные цитаты, чем много слабых.\n- Если утверждение неверно, в `correction` одним предложением напиши, как правильно по источникам. Иначе null.\n- `confidence` — вероятность, что вердикт верен. `concerns` — конкретные оговорки для человека, без общих слов.\n- Сначала `reasoning` на русском, до 150 слов."
+  },
+  {
+   "role": "user",
+   "content": "Документ на проверке: d05_otvet_api\nКонтекст документа: Ответ клиенту на вопросы разработчика об API продукта Сорока CRM. Страна клиента не определяется по тексту. Упоминаются тарифы «Старт» и «Бизнес».\n\nУТВЕРЖДЕНИЕ C3 (тип: number):\n\"На тарифе «Бизнес» можно настроить до 50 вебхуков.\"\n\nИсходное предложение документа: \"На тарифе «Бизнес» можно настроить до 50 вебхуков.\"\n\n=== ФРАГМЕНТЫ ИСТОЧНИКОВ КОМПАНИИ ===\n[chunk_id=08_integracii.md#1] API и интеграции | раздел: Вебхуки\nВебхуки позволяют получать уведомления о событиях в CRM: создании сделки, смене этапа, новой задаче. На тарифе «Команда» можно настроить до 10 вебхуков, на тарифе «Бизнес» — до 50, на тарифе «Корпоративный» количество не ограничено. Если внешний сервер не ответил, доставка повторяется 3 раза: через 5, 15 и 60 минут.\n\n---\n\n[chunk_id=08_integracii.md#5] API и интеграции | раздел: Email-рассылки\nМассовые email-рассылки доступны на тарифах «Бизнес» и «Корпоративный». На тарифе «Бизнес» можно отправить до 10 000 писем в месяц, на тарифе «Корпоративный» — до 100 000 писем в месяц. Неотправленный лимит на следующий месяц не переносится.\n\n---\n\n[chunk_id=10_migraciya.md#1] Перенос данных в Сорока CRM | раздел: Услуга «Переезд под ключ»\nСпециалисты Сорока CRM переносят данные из другой CRM-системы, включая историю сделок, задачи и комментарии. Для клиентов тарифа «Бизнес» при оплате на год перенос до 50 000 записей выполняется бесплатно. В остальных случаях стоимость составляет 25 000 ₽ за каждые начатые 50 000 записей.\n\n---\n\n[chunk_id=07_podderzhka.md#3] Поддержка клиентов | раздел: Обучение\nЕженедельные обучающие вебинары бесплатны для всех клиентов, включая пробный период. Персональное онбординг-обучение длительностью 2 часа включено в тариф «Бизнес» при оплате на год. На тарифе «Корпоративный» включено до 10 часов персонального обучения. Дополнительный час персонального обучения стоит 4 500 ₽.\n\n---\n\n[chunk_id=11_funkcii.md#0] Возможности Сорока CRM | раздел: Воронки продаж и сделки\nСделки ведутся в воронках с настраиваемыми этапами. Количество воронок зависит от тарифа: одна на «Старте», до 10 на «Команде», без ограничений на «Бизнесе» и «Корпоративном». Для каждого этапа можно задать обязательные поля и автоматические действия.\n\n---\n\n[chunk_id=02_tarify_kz.md#3] Тарифы Сорока CRM для Казахстана | раздел: Тариф «Бизнес» (Казахстан)\nТариф «Бизнес» для Казахстана рассчитан на команды до 100 пользователей. Стоимость — 69 900 ₸ в месяц. В тариф входят 500 ГБ файлового хранилища, неограниченное количество воронок продаж, REST API с лимитом 300 запросов в минуту и журнал аудита. Интеграция с 1С для казахстанских клиентов доступна с тарифа «Бизнес».\n\n---\n\n[chunk_id=03_skidki.md#3] Скидки и специальные условия | раздел: Акция «Переезд»\nКлиенты, которые переходят в Сорока CRM из другой CRM-системы, получают скидку 50% на первые 3 месяца тарифа «Команда» или «Бизнес» при помесячной оплате. Акция действует для договоров, заключённых до 31 декабря 2026 года. Для участия нужно подтвердить использование другой CRM не менее 6 месяцев (например, счётом или скриншотом аккаунта).\n\n---\n\n[chunk_id=01_tarify_rf.md#3] Тарифы Сорока CRM для России | раздел: Тариф «Бизнес»\nТариф «Бизнес» рассчитан на команды до 100 пользователей. Стоимость — 12 990 ₽ в месяц. В тариф входят 500 ГБ файлового хранилища и неограниченное количество воронок продаж. Доступен REST API с лимитом 300 запросов в минуту. Доступны роли и гибкие права доступа, журнал аудита и интеграция с 1С. Персональный менеджер в тариф «Бизнес» не входит.\n\nВерни вердикт через инструмент `submit_verdict`."
+  }
+ ],
+ "chunks": [
+  {
+   "id": "chatcmpl-8318884c-045d-9bc5-b0ab-35e507f7a836",
+   "choices": [
+    {
+     "delta": {
+      "content": "",
+      "role": "assistant",
+      "tool_calls": [
+       {
+        "index": 0,
+        "id": "call_f7d8a2959eab4064be8f4072",
+        "function": {
+         "arguments": "",
+         "name": "submit_verdict"
+        },
+        "type": "function"
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064859,
+   "model": "deepseek-v4.1-flash",
+   "object": "chat.completion.chunk"
+  },
+  {
+   "id": "chatcmpl-8318884c-045d-9bc5-b0ab-35e507f7a836",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "id": "",
+        "function": {
+         "arguments": ""
+        },
+        "type": "function"
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064859,
+   "model": "deepseek-v4.1-flash",
+   "object": "chat.completion.chunk"
+  },
+  {
+   "id": "chatcmpl-8318884c-045d-9bc5-b0ab-35e507f7a836",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "{"
+        },
+        "type": "function"
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064859,
+   "model": "deepseek-v4.1-flash",
+   "object": "chat.completion.chunk"
+  },
+  {
+   "id": "chatcmpl-8318884c-045d-9bc5-b0ab-35e507f7a836",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "\"concerns\": [\"Источник"
+        },
+        "type": "function"
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064859,
+   "model": "deepseek-v4.1-flash",
+   "object": "chat.completion.chunk"
+  },
+  {
+   "id": "chatcmpl-8318884c-045d-9bc5-b0ab-35e507f7a836",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " по"
+        },
+        "type": "function"
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064859,
+   "model": "deepseek-v4.1-flash",
+   "object": "chat.completion.chunk"
+  },
+  {
+   "id": "chatcmpl-8318884c-045d-9bc5-b0ab-35e507f7a836",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " ве"
+        },
+        "type": "function"
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064859,
+   "model": "deepseek-v4.1-flash",
+   "object": "chat.completion.chunk"
+  },
+  {
+   "id": "chatcmpl-8318884c-045d-9bc5-b0ab-35e507f7a836",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "бхукам —"
+        },
+        "type": "function"
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064859,
+   "model": "deepseek-v4.1-flash",
+   "object": "chat.completion.chunk"
+  },
+  {
+   "id": "chatcmpl-8318884c-045d-9bc5-b0ab-35e507f7a836",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " раздел «"
+        },
+        "type": "function"
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064859,
+   "model": "deepseek-v4.1-flash",
+   "object": "chat.completion.chunk"
+  },
+  {
+   "id": "chatcmpl-8318884c-045d-9bc5-b0ab-35e507f7a836",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "API и интеграции"
+        },
+        "type": "function"
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064859,
+   "model": "deepseek-v4.1-flash",
+   "object": "chat.completion.chunk"
+  },
+  {
+   "id": "chatcmpl-8318884c-045d-9bc5-b0ab-35e507f7a836",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "» из общего документа"
+        },
+        "type": "function"
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064859,
+   "model": "deepseek-v4.1-flash",
+   "object": "chat.completion.chunk"
+  },
+  {
+   "id": "chatcmpl-8318884c-045d-9bc5-b0ab-35e507f7a836",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "; реги"
+        },
+        "type": "function"
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064859,
+   "model": "deepseek-v4.1-flash",
+   "object": "chat.completion.chunk"
+  },
+  {
+   "id": "chatcmpl-8318884c-045d-9bc5-b0ab-35e507f7a836",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "он в"
+        },
+        "type": "function"
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064859,
+   "model": "deepseek-v4.1-flash",
+   "object": "chat.completion.chunk"
+  },
+  {
+   "id": "chatcmpl-8318884c-045d-9bc5-b0ab-35e507f7a836",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " нём не указа"
+        },
+        "type": "function"
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064859,
+   "model": "deepseek-v4.1-flash",
+   "object": "chat.completion.chunk"
+  },
+  {
+   "id": "chatcmpl-8318884c-045d-9bc5-b0ab-35e507f7a836",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "н, а"
+        },
+        "type": "function"
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064859,
+   "model": "deepseek-v4.1-flash",
+   "object": "chat.completion.chunk"
+  },
+  {
+   "id": "chatcmpl-8318884c-045d-9bc5-b0ab-35e507f7a836",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " доку"
+        },
+        "type": "function"
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064859,
+   "model": "deepseek-v4.1-flash",
+   "object": "chat.completion.chunk"
+  },
+  {
+   "id": "chatcmpl-8318884c-045d-9bc5-b0ab-35e507f7a836",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "мент на"
+        },
+        "type": "function"
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064859,
+   "model": "deepseek-v4.1-flash",
+   "object": "chat.completion.chunk"
+  },
+  {
+   "id": "chatcmpl-8318884c-045d-9bc5-b0ab-35e507f7a836",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " проверке реги"
+        },
+        "type": "function"
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064859,
+   "model": "deepseek-v4.1-flash",
+   "object": "chat.completion.chunk"
+  },
+  {
+   "id": "chatcmpl-8318884c-045d-9bc5-b0ab-35e507f7a836",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "он не определя"
+        },
+        "type": "function"
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064859,
+   "model": "deepseek-v4.1-flash",
+   "object": "chat.completion.chunk"
+  },
+  {
+   "id": "chatcmpl-8318884c-045d-9bc5-b0ab-35e507f7a836",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "ет."
+        },
+        "type": "function"
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064859,
+   "model": "deepseek-v4.1-flash",
+   "object": "chat.completion.chunk"
+  },
+  {
+   "id": "chatcmpl-8318884c-045d-9bc5-b0ab-35e507f7a836",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " Утверждение о"
+        },
+        "type": "function"
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064859,
+   "model": "deepseek-v4.1-flash",
+   "object": "chat.completion.chunk"
+  },
+  {
+   "id": "chatcmpl-8318884c-045d-9bc5-b0ab-35e507f7a836",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " лимите ве"
+        },
+        "type": "function"
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064859,
+   "model": "deepseek-v4.1-flash",
+   "object": "chat.completion.chunk"
+  },
+  {
+   "id": "chatcmpl-8318884c-045d-9bc5-b0ab-35e507f7a836",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "бхуков на"
+        },
+        "type": "function"
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064859,
+   "model": "deepseek-v4.1-flash",
+   "object": "chat.completion.chunk"
+  },
+  {
+   "id": "chatcmpl-8318884c-045d-9bc5-b0ab-35e507f7a836",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " «"
+        },
+        "type": "function"
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064859,
+   "model": "deepseek-v4.1-flash",
+   "object": "chat.completion.chunk"
+  },
+  {
+   "id": "chatcmpl-8318884c-045d-9bc5-b0ab-35e507f7a836",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "Бизне"
+        },
+        "type": "function"
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064859,
+   "model": "deepseek-v4.1-flash",
+   "object": "chat.completion.chunk"
+  },
+  {
+   "id": "chatcmpl-8318884c-045d-9bc5-b0ab-35e507f7a836",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "се» подтвержд"
+        },
+        "type": "function"
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064859,
+   "model": "deepseek-v4.1-flash",
+   "object": "chat.completion.chunk"
+  },
+  {
+   "id": "chatcmpl-8318884c-045d-9bc5-b0ab-35e507f7a836",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "ено только этим"
+        },
+        "type": "function"
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064859,
+   "model": "deepseek-v4.1-flash",
+   "object": "chat.completion.chunk"
+  },
+  {
+   "id": "chatcmpl-8318884c-045d-9bc5-b0ab-35e507f7a836",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " ф"
+        },
+        "type": "function"
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064859,
+   "model": "deepseek-v4.1-flash",
+   "object": "chat.completion.chunk"
+  },
+  {
+   "id": "chatcmpl-8318884c-045d-9bc5-b0ab-35e507f7a836",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "рагментом.\""
+        },
+        "type": "function"
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064859,
+   "model": "deepseek-v4.1-flash",
+   "object": "chat.completion.chunk"
+  },
+  {
+   "id": "chatcmpl-8318884c-045d-9bc5-b0ab-35e507f7a836",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "]"
+        },
+        "type": "function"
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064859,
+   "model": "deepseek-v4.1-flash",
+   "object": "chat.completion.chunk"
+  },
+  {
+   "id": "chatcmpl-8318884c-045d-9bc5-b0ab-35e507f7a836",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": ", \"confidence\": 0.93"
+        },
+        "type": "function"
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064859,
+   "model": "deepseek-v4.1-flash",
+   "object": "chat.completion.chunk"
+  },
+  {
+   "id": "chatcmpl-8318884c-045d-9bc5-b0ab-35e507f7a836",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": ", \"correction\": null"
+        },
+        "type": "function"
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064859,
+   "model": "deepseek-v4.1-flash",
+   "object": "chat.completion.chunk"
+  },
+  {
+   "id": "chatcmpl-8318884c-045d-9bc5-b0ab-35e507f7a836",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": ", \"evidence\": [{\"ch"
+        },
+        "type": "function"
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064859,
+   "model": "deepseek-v4.1-flash",
+   "object": "chat.completion.chunk"
+  },
+  {
+   "id": "chatcmpl-8318884c-045d-9bc5-b0ab-35e507f7a836",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "unk_id\": \""
+        },
+        "type": "function"
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064859,
+   "model": "deepseek-v4.1-flash",
+   "object": "chat.completion.chunk"
+  },
+  {
+   "id": "chatcmpl-8318884c-045d-9bc5-b0ab-35e507f7a836",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "08_in"
+        },
+        "type": "function"
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064859,
+   "model": "deepseek-v4.1-flash",
+   "object": "chat.completion.chunk"
+  },
+  {
+   "id": "chatcmpl-8318884c-045d-9bc5-b0ab-35e507f7a836",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "tegracii"
+        },
+        "type": "function"
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064859,
+   "model": "deepseek-v4.1-flash",
+   "object": "chat.completion.chunk"
+  },
+  {
+   "id": "chatcmpl-8318884c-045d-9bc5-b0ab-35e507f7a836",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": ".md#1\","
+        },
+        "type": "function"
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064859,
+   "model": "deepseek-v4.1-flash",
+   "object": "chat.completion.chunk"
+  },
+  {
+   "id": "chatcmpl-8318884c-045d-9bc5-b0ab-35e507f7a836",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " \"quote\": \""
+        },
+        "type": "function"
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064859,
+   "model": "deepseek-v4.1-flash",
+   "object": "chat.completion.chunk"
+  },
+  {
+   "id": "chatcmpl-8318884c-045d-9bc5-b0ab-35e507f7a836",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "На тарифе"
+        },
+        "type": "function"
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064859,
+   "model": "deepseek-v4.1-flash",
+   "object": "chat.completion.chunk"
+  },
+  {
+   "id": "chatcmpl-8318884c-045d-9bc5-b0ab-35e507f7a836",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " «Команда"
+        },
+        "type": "function"
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064859,
+   "model": "deepseek-v4.1-flash",
+   "object": "chat.completion.chunk"
+  },
+  {
+   "id": "chatcmpl-8318884c-045d-9bc5-b0ab-35e507f7a836",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "» можно настро"
+        },
+        "type": "function"
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064859,
+   "model": "deepseek-v4.1-flash",
+   "object": "chat.completion.chunk"
+  },
+  {
+   "id": "chatcmpl-8318884c-045d-9bc5-b0ab-35e507f7a836",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "ить до 10"
+        },
+        "type": "function"
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064859,
+   "model": "deepseek-v4.1-flash",
+   "object": "chat.completion.chunk"
+  },
+  {
+   "id": "chatcmpl-8318884c-045d-9bc5-b0ab-35e507f7a836",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " вебхуков"
+        },
+        "type": "function"
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064859,
+   "model": "deepseek-v4.1-flash",
+   "object": "chat.completion.chunk"
+  },
+  {
+   "id": "chatcmpl-8318884c-045d-9bc5-b0ab-35e507f7a836",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": ", на тари"
+        },
+        "type": "function"
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064859,
+   "model": "deepseek-v4.1-flash",
+   "object": "chat.completion.chunk"
+  },
+  {
+   "id": "chatcmpl-8318884c-045d-9bc5-b0ab-35e507f7a836",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "фе «Биз"
+        },
+        "type": "function"
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064859,
+   "model": "deepseek-v4.1-flash",
+   "object": "chat.completion.chunk"
+  },
+  {
+   "id": "chatcmpl-8318884c-045d-9bc5-b0ab-35e507f7a836",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "нес» — до"
+        },
+        "type": "function"
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064859,
+   "model": "deepseek-v4.1-flash",
+   "object": "chat.completion.chunk"
+  },
+  {
+   "id": "chatcmpl-8318884c-045d-9bc5-b0ab-35e507f7a836",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " 50, на"
+        },
+        "type": "function"
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064859,
+   "model": "deepseek-v4.1-flash",
+   "object": "chat.completion.chunk"
+  },
+  {
+   "id": "chatcmpl-8318884c-045d-9bc5-b0ab-35e507f7a836",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " тарифе «"
+        },
+        "type": "function"
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064859,
+   "model": "deepseek-v4.1-flash",
+   "object": "chat.completion.chunk"
+  },
+  {
+   "id": "chatcmpl-8318884c-045d-9bc5-b0ab-35e507f7a836",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "Корпора"
+        },
+        "type": "function"
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064859,
+   "model": "deepseek-v4.1-flash",
+   "object": "chat.completion.chunk"
+  },
+  {
+   "id": "chatcmpl-8318884c-045d-9bc5-b0ab-35e507f7a836",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "тивный» количество"
+        },
+        "type": "function"
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064859,
+   "model": "deepseek-v4.1-flash",
+   "object": "chat.completion.chunk"
+  },
+  {
+   "id": "chatcmpl-8318884c-045d-9bc5-b0ab-35e507f7a836",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " не ограничено.\","
+        },
+        "type": "function"
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064859,
+   "model": "deepseek-v4.1-flash",
+   "object": "chat.completion.chunk"
+  },
+  {
+   "id": "chatcmpl-8318884c-045d-9bc5-b0ab-35e507f7a836",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " \"stance\": \""
+        },
+        "type": "function"
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064859,
+   "model": "deepseek-v4.1-flash",
+   "object": "chat.completion.chunk"
+  },
+  {
+   "id": "chatcmpl-8318884c-045d-9bc5-b0ab-35e507f7a836",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "supports\"}]"
+        },
+        "type": "function"
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064859,
+   "model": "deepseek-v4.1-flash",
+   "object": "chat.completion.chunk"
+  },
+  {
+   "id": "chatcmpl-8318884c-045d-9bc5-b0ab-35e507f7a836",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": ", \"reasoning\": \"Утверждение:"
+        },
+        "type": "function"
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064859,
+   "model": "deepseek-v4.1-flash",
+   "object": "chat.completion.chunk"
+  },
+  {
+   "id": "chatcmpl-8318884c-045d-9bc5-b0ab-35e507f7a836",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " на тарифе"
+        },
+        "type": "function"
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064859,
+   "model": "deepseek-v4.1-flash",
+   "object": "chat.completion.chunk"
+  },
+  {
+   "id": "chatcmpl-8318884c-045d-9bc5-b0ab-35e507f7a836",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " «Бизнес"
+        },
+        "type": "function"
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064859,
+   "model": "deepseek-v4.1-flash",
+   "object": "chat.completion.chunk"
+  },
+  {
+   "id": "chatcmpl-8318884c-045d-9bc5-b0ab-35e507f7a836",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "» до 50"
+        },
+        "type": "function"
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064859,
+   "model": "deepseek-v4.1-flash",
+   "object": "chat.completion.chunk"
+  },
+  {
+   "id": "chatcmpl-8318884c-045d-9bc5-b0ab-35e507f7a836",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " вебхуков"
+        },
+        "type": "function"
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064859,
+   "model": "deepseek-v4.1-flash",
+   "object": "chat.completion.chunk"
+  },
+  {
+   "id": "chatcmpl-8318884c-045d-9bc5-b0ab-35e507f7a836",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": ". Исто"
+        },
+        "type": "function"
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064859,
+   "model": "deepseek-v4.1-flash",
+   "object": "chat.completion.chunk"
+  },
+  {
+   "id": "chatcmpl-8318884c-045d-9bc5-b0ab-35e507f7a836",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "чник"
+        },
+        "type": "function"
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064859,
+   "model": "deepseek-v4.1-flash",
+   "object": "chat.completion.chunk"
+  },
+  {
+   "id": "chatcmpl-8318884c-045d-9bc5-b0ab-35e507f7a836",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " 08_integ"
+        },
+        "type": "function"
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064859,
+   "model": "deepseek-v4.1-flash",
+   "object": "chat.completion.chunk"
+  },
+  {
+   "id": "chatcmpl-8318884c-045d-9bc5-b0ab-35e507f7a836",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "racii.md#1"
+        },
+        "type": "function"
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064859,
+   "model": "deepseek-v4.1-flash",
+   "object": "chat.completion.chunk"
+  },
+  {
+   "id": "chatcmpl-8318884c-045d-9bc5-b0ab-35e507f7a836",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " прямо указывает:"
+        },
+        "type": "function"
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064859,
+   "model": "deepseek-v4.1-flash",
+   "object": "chat.completion.chunk"
+  },
+  {
+   "id": "chatcmpl-8318884c-045d-9bc5-b0ab-35e507f7a836",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " «Ком"
+        },
+        "type": "function"
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064859,
+   "model": "deepseek-v4.1-flash",
+   "object": "chat.completion.chunk"
+  },
+  {
+   "id": "chatcmpl-8318884c-045d-9bc5-b0ab-35e507f7a836",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "анда» —"
+        },
+        "type": "function"
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064859,
+   "model": "deepseek-v4.1-flash",
+   "object": "chat.completion.chunk"
+  },
+  {
+   "id": "chatcmpl-8318884c-045d-9bc5-b0ab-35e507f7a836",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " до 10 ве"
+        },
+        "type": "function"
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064859,
+   "model": "deepseek-v4.1-flash",
+   "object": "chat.completion.chunk"
+  },
+  {
+   "id": "chatcmpl-8318884c-045d-9bc5-b0ab-35e507f7a836",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "бхуков,"
+        },
+        "type": "function"
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064859,
+   "model": "deepseek-v4.1-flash",
+   "object": "chat.completion.chunk"
+  },
+  {
+   "id": "chatcmpl-8318884c-045d-9bc5-b0ab-35e507f7a836",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " «Бизнес"
+        },
+        "type": "function"
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064859,
+   "model": "deepseek-v4.1-flash",
+   "object": "chat.completion.chunk"
+  },
+  {
+   "id": "chatcmpl-8318884c-045d-9bc5-b0ab-35e507f7a836",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "» — до"
+        },
+        "type": "function"
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064859,
+   "model": "deepseek-v4.1-flash",
+   "object": "chat.completion.chunk"
+  },
+  {
+   "id": "chatcmpl-8318884c-045d-9bc5-b0ab-35e507f7a836",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " 50, «К"
+        },
+        "type": "function"
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064859,
+   "model": "deepseek-v4.1-flash",
+   "object": "chat.completion.chunk"
+  },
+  {
+   "id": "chatcmpl-8318884c-045d-9bc5-b0ab-35e507f7a836",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "орпоративный"
+        },
+        "type": "function"
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064859,
+   "model": "deepseek-v4.1-flash",
+   "object": "chat.completion.chunk"
+  },
+  {
+   "id": "chatcmpl-8318884c-045d-9bc5-b0ab-35e507f7a836",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "» — без"
+        },
+        "type": "function"
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064859,
+   "model": "deepseek-v4.1-flash",
+   "object": "chat.completion.chunk"
+  },
+  {
+   "id": "chatcmpl-8318884c-045d-9bc5-b0ab-35e507f7a836",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " ограничений."
+        },
+        "type": "function"
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064859,
+   "model": "deepseek-v4.1-flash",
+   "object": "chat.completion.chunk"
+  },
+  {
+   "id": "chatcmpl-8318884c-045d-9bc5-b0ab-35e507f7a836",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " Тариф и число"
+        },
+        "type": "function"
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064859,
+   "model": "deepseek-v4.1-flash",
+   "object": "chat.completion.chunk"
+  },
+  {
+   "id": "chatcmpl-8318884c-045d-9bc5-b0ab-35e507f7a836",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " совпадают."
+        },
+        "type": "function"
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064859,
+   "model": "deepseek-v4.1-flash",
+   "object": "chat.completion.chunk"
+  },
+  {
+   "id": "chatcmpl-8318884c-045d-9bc5-b0ab-35e507f7a836",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " Регион в"
+        },
+        "type": "function"
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064859,
+   "model": "deepseek-v4.1-flash",
+   "object": "chat.completion.chunk"
+  },
+  {
+   "id": "chatcmpl-8318884c-045d-9bc5-b0ab-35e507f7a836",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " этом"
+        },
+        "type": "function"
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064859,
+   "model": "deepseek-v4.1-flash",
+   "object": "chat.completion.chunk"
+  },
+  {
+   "id": "chatcmpl-8318884c-045d-9bc5-b0ab-35e507f7a836",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " фрагменте"
+        },
+        "type": "function"
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064859,
+   "model": "deepseek-v4.1-flash",
+   "object": "chat.completion.chunk"
+  },
+  {
+   "id": "chatcmpl-8318884c-045d-9bc5-b0ab-35e507f7a836",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " не о"
+        },
+        "type": "function"
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064859,
+   "model": "deepseek-v4.1-flash",
+   "object": "chat.completion.chunk"
+  },
+  {
+   "id": "chatcmpl-8318884c-045d-9bc5-b0ab-35e507f7a836",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "говорён"
+        },
+        "type": "function"
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064859,
+   "model": "deepseek-v4.1-flash",
+   "object": "chat.completion.chunk"
+  },
+  {
+   "id": "chatcmpl-8318884c-045d-9bc5-b0ab-35e507f7a836",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": ", а"
+        },
+        "type": "function"
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064859,
+   "model": "deepseek-v4.1-flash",
+   "object": "chat.completion.chunk"
+  },
+  {
+   "id": "chatcmpl-8318884c-045d-9bc5-b0ab-35e507f7a836",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " документ на"
+        },
+        "type": "function"
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064859,
+   "model": "deepseek-v4.1-flash",
+   "object": "chat.completion.chunk"
+  },
+  {
+   "id": "chatcmpl-8318884c-045d-9bc5-b0ab-35e507f7a836",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " проверке регион"
+        },
+        "type": "function"
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064859,
+   "model": "deepseek-v4.1-flash",
+   "object": "chat.completion.chunk"
+  },
+  {
+   "id": "chatcmpl-8318884c-045d-9bc5-b0ab-35e507f7a836",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " не определяет,"
+        },
+        "type": "function"
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064859,
+   "model": "deepseek-v4.1-flash",
+   "object": "chat.completion.chunk"
+  },
+  {
+   "id": "chatcmpl-8318884c-045d-9bc5-b0ab-35e507f7a836",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " поэтому нет"
+        },
+        "type": "function"
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064859,
+   "model": "deepseek-v4.1-flash",
+   "object": "chat.completion.chunk"
+  },
+  {
+   "id": "chatcmpl-8318884c-045d-9bc5-b0ab-35e507f7a836",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " основа"
+        },
+        "type": "function"
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064859,
+   "model": "deepseek-v4.1-flash",
+   "object": "chat.completion.chunk"
+  },
+  {
+   "id": "chatcmpl-8318884c-045d-9bc5-b0ab-35e507f7a836",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "ний сни"
+        },
+        "type": "function"
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064859,
+   "model": "deepseek-v4.1-flash",
+   "object": "chat.completion.chunk"
+  },
+  {
+   "id": "chatcmpl-8318884c-045d-9bc5-b0ab-35e507f7a836",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "жать верди"
+        },
+        "type": "function"
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064859,
+   "model": "deepseek-v4.1-flash",
+   "object": "chat.completion.chunk"
+  },
+  {
+   "id": "chatcmpl-8318884c-045d-9bc5-b0ab-35e507f7a836",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "кт. Оста"
+        },
+        "type": "function"
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064859,
+   "model": "deepseek-v4.1-flash",
+   "object": "chat.completion.chunk"
+  },
+  {
+   "id": "chatcmpl-8318884c-045d-9bc5-b0ab-35e507f7a836",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "льные фрагменты"
+        },
+        "type": "function"
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064859,
+   "model": "deepseek-v4.1-flash",
+   "object": "chat.completion.chunk"
+  },
+  {
+   "id": "chatcmpl-8318884c-045d-9bc5-b0ab-35e507f7a836",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " (ли"
+        },
+        "type": "function"
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064859,
+   "model": "deepseek-v4.1-flash",
+   "object": "chat.completion.chunk"
+  },
+  {
+   "id": "chatcmpl-8318884c-045d-9bc5-b0ab-35e507f7a836",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "миты п"
+        },
+        "type": "function"
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064859,
+   "model": "deepseek-v4.1-flash",
+   "object": "chat.completion.chunk"
+  },
+  {
+   "id": "chatcmpl-8318884c-045d-9bc5-b0ab-35e507f7a836",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "исем, пер"
+        },
+        "type": "function"
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064859,
+   "model": "deepseek-v4.1-flash",
+   "object": "chat.completion.chunk"
+  },
+  {
+   "id": "chatcmpl-8318884c-045d-9bc5-b0ab-35e507f7a836",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "енос записей"
+        },
+        "type": "function"
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064859,
+   "model": "deepseek-v4.1-flash",
+   "object": "chat.completion.chunk"
+  },
+  {
+   "id": "chatcmpl-8318884c-045d-9bc5-b0ab-35e507f7a836",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": ", ворон"
+        },
+        "type": "function"
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064859,
+   "model": "deepseek-v4.1-flash",
+   "object": "chat.completion.chunk"
+  },
+  {
+   "id": "chatcmpl-8318884c-045d-9bc5-b0ab-35e507f7a836",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "ки)"
+        },
+        "type": "function"
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064859,
+   "model": "deepseek-v4.1-flash",
+   "object": "chat.completion.chunk"
+  },
+  {
+   "id": "chatcmpl-8318884c-045d-9bc5-b0ab-35e507f7a836",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " к вебху"
+        },
+        "type": "function"
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064859,
+   "model": "deepseek-v4.1-flash",
+   "object": "chat.completion.chunk"
+  },
+  {
+   "id": "chatcmpl-8318884c-045d-9bc5-b0ab-35e507f7a836",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "кам не"
+        },
+        "type": "function"
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064859,
+   "model": "deepseek-v4.1-flash",
+   "object": "chat.completion.chunk"
+  },
+  {
+   "id": "chatcmpl-8318884c-045d-9bc5-b0ab-35e507f7a836",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " относятся.\""
+        },
+        "type": "function"
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064859,
+   "model": "deepseek-v4.1-flash",
+   "object": "chat.completion.chunk"
+  },
+  {
+   "id": "chatcmpl-8318884c-045d-9bc5-b0ab-35e507f7a836",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": ", \"verdict\": \"SU"
+        },
+        "type": "function"
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064859,
+   "model": "deepseek-v4.1-flash",
+   "object": "chat.completion.chunk"
+  },
+  {
+   "id": "chatcmpl-8318884c-045d-9bc5-b0ab-35e507f7a836",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "PPORTED\"}"
+        },
+        "type": "function"
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064859,
+   "model": "deepseek-v4.1-flash",
+   "object": "chat.completion.chunk"
+  },
+  {
+   "id": "chatcmpl-8318884c-045d-9bc5-b0ab-35e507f7a836",
+   "choices": [
+    {
+     "delta": {
+      "content": ""
+     },
+     "index": 0,
+     "finish_reason": "tool_calls"
+    }
+   ],
+   "created": 1794064859,
+   "model": "deepseek-v4.1-flash",
+   "object": "chat.completion.chunk"
+  },
+  {
+   "id": "chatcmpl-8318884c-045d-9bc5-b0ab-35e507f7a836",
+   "choices": [],
+   "created": 1794064859,
+   "model": "deepseek-v4.1-flash",
+   "object": "chat.completion.chunk",
+   "usage": {
+    "completion_tokens": 422,
+    "prompt_tokens": 2703,
+    "total_tokens": 3125,
+    "completion_tokens_details": {
+     "text_tokens": 422
+    },
+    "prompt_tokens_details": {
+     "cached_tokens": 1280,
+     "image_tokens": 0,
+     "text_tokens": 2703
+    }
+   }
+  },
+  {
+   "choices": [],
+   "object": "chat.completion.chunk",
+   "usage": {
+    "completion_tokens": 422,
+    "prompt_tokens": 2703,
+    "total_tokens": 3125,
+    "prompt_tokens_details": {
+     "cached_tokens": 1280
+    }
+   }
+  }
+ ]
+}

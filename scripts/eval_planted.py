@@ -46,7 +46,7 @@ STRICT_FP = {"CONTRADICTED", "OVERSTATED"}
 KIND_RU = {"number": "неверное число", "deadline": "неверный срок/дата", "condition": "изменённое условие",
            "object_swap": "свойство другого тарифа/региона", "outdated": "из архивной редакции",
            "overstatement": "преувеличение", "not_in_sources": "нет в источниках",
-           "wrong_clause": "неверная ссылка на пункт"}
+           "wrong_clause": "неверная ссылка на пункт", "arithmetic": "ошибка в расчёте"}
 
 
 def norm(s: str) -> str:
@@ -118,7 +118,8 @@ def score_doc(report: dict[str, Any], doc_labels: dict[str, Any]) -> dict[str, A
                        "r0": _r0(c), "final": c["verdict"], "status": c["status"],
                        "fp_strict": c["verdict"] in STRICT_FP, "fp_review": c["id"] in review})
     clean_extracted = {o["label"] for o in others if o["label"]}
-    return {"doc": doc_labels["file"], "run_id": report["run_id"], "rows": rows, "others": others,
+    return {"doc": doc_labels["file"], "difficulty": doc_labels.get("difficulty", "basic"),
+            "run_id": report["run_id"], "rows": rows, "others": others,
             "clean_total": len(clean), "clean_extracted": len(clean_extracted),
             "grounding": report["aggregate"]["grounding"], "metrics": report["metrics"],
             "claims": len(claims), "claim_errors": len(report.get("claim_errors") or []),
@@ -126,6 +127,13 @@ def score_doc(report: dict[str, Any], doc_labels: dict[str, Any]) -> dict[str, A
 
 
 def summarize(docs: list[dict[str, Any]]) -> dict[str, Any]:
+    out = _summarize(docs)
+    out["by_difficulty"] = {d: _summarize([x for x in docs if x.get("difficulty", "basic") == d])
+                            for d in ("basic", "hard") if any(x.get("difficulty", "basic") == d for x in docs)}
+    return out
+
+
+def _summarize(docs: list[dict[str, Any]]) -> dict[str, Any]:
     rows = [r for d in docs for r in d["rows"]]
     others = [o for d in docs for o in d["others"]]
     clean = [o for o in others if o["kind"] == "clean"]
@@ -202,25 +210,28 @@ async def run_eval(args: argparse.Namespace) -> Path:
                 print(f"  skip {d['file']}: budget ${args.budget} reached", flush=True)
                 return
             run_id = f"{eval_id}-{d['file'][:3]}"
-            claims_override = None
+            claims_override, doc_context = None, ""
             if args.reuse_claims:
                 src = EVALS / "runs" / args.reuse_claims / "claims" / f"{d['file']}.json"
-                claims_override = [Claim.model_validate(c) for c in json.loads(src.read_text(encoding="utf-8"))]
+                saved = json.loads(src.read_text(encoding="utf-8"))
+                claims_override = [Claim.model_validate(c) for c in saved["claims"]]
+                doc_context = saved.get("document_context", "")
             bus = EventBus(run_id, s.runs_dir / run_id / "events.jsonl")
             report = await run_pipeline(run_id=run_id, settings=s, store=store, bus=bus,
                                         doc=load_file(DOCS / d["file"]), filename=d["file"], params=params,
-                                        write_summary=False, claims_override=claims_override)
+                                        write_summary=True, claims_override=claims_override,
+                                        doc_context=doc_context)
             if report is None:
-                err = (s.runs_dir / run_id / "error.txt")
-                print(f"  FAILED {d['file']}: {err.read_text(encoding='utf-8')[-400:] if err.exists() else ''}",
-                      flush=True)
-                if "401" in str(err.read_text(encoding="utf-8") if err.exists() else "") or \
-                        "402" in str(err.read_text(encoding="utf-8") if err.exists() else ""):
-                    raise SystemExit("LLM endpoint refused the key (401/402): stopping the eval")
+                err_path = s.runs_dir / run_id / "error.txt"
+                err = err_path.read_text(encoding="utf-8") if err_path.exists() else ""
+                print(f"  FAILED {d['file']}: {err[-400:]}", flush=True)
+                if any(code in err for code in ("Error code: 401", "Error code: 402", "insufficient")):
+                    raise SystemExit("LLM endpoint refused the key or the balance is empty: stopping the eval")
                 return
             (out_dir / "claims").mkdir(exist_ok=True)
             (out_dir / "claims" / f"{d['file']}.json").write_text(json.dumps(
-                [{k: c[k] for k in ("id", "text", "type", "quote", "section")} for c in report["claims"]],
+                {"document_context": report.get("document_context", ""),
+                 "claims": [{k: c[k] for k in ("id", "text", "type", "quote", "section")} for c in report["claims"]]},
                 ensure_ascii=False, indent=1), encoding="utf-8")
             sd = score_doc(report, d)
             scored.append(sd)
@@ -259,8 +270,9 @@ def render(results: list[dict[str, Any]]) -> str:
     lab = json.loads(LABELS.read_text(encoding="utf-8"))
     L = ["# Planted-error eval", "",
          f"Dataset: `data/eval/` — {lab['totals']['docs']} synthetic business documents (support replies, "
-         f"commercial proposals, an internal memo) with **{lab['totals']['planted']} planted errors** of 8 kinds and "
-         f"{lab['totals']['clean']} correct statements, checked against the synthetic corpus in `data/corpus/` "
+         f"commercial proposals, internal memos) with **{lab['totals']['planted']} planted errors** of 9 kinds and "
+         f"{lab['totals']['clean']} correct statements (d01–d10 basic, d11–d15 hard: arithmetic over the price list, "
+         "working vs calendar days, exceptions to rules, multi-hop facts, tricky statements that are correct), checked against the synthetic corpus in `data/corpus/` "
          "(tariffs RU/KZ, offer + archived offer, SLA, support, integrations, security, migration, features). "
          "Built by `scripts/build_eval_set.py`.", ""]
     if not results:
@@ -270,21 +282,27 @@ def render(results: list[dict[str, Any]]) -> str:
         by_label.setdefault(r["label"], []).append(r)
     L += ["## Summary by configuration", "",
           "Mean ± sd over runs of the same configuration (stochastic models: each run is one sample).", "",
-          "| configuration | runs | analyst | recall strict | flagged for human | analyst r0 | caught only after debate | "
+          "| configuration | set | runs | analyst | recall strict | flagged for human | analyst r0 | caught only after debate | "
           "FP strict (correct claims) | FP → human (correct claims) | grounding | $ / document |",
-          "|---|---|---|---|---|---|---|---|---|---|---|"]
+          "|---|---|---|---|---|---|---|---|---|---|---|---|"]
     for label, rs in by_label.items():
-        S = [r["summary"] for r in rs]
-        L.append(f"| {label} | {len(rs)} | `{rs[-1]['models']['analyst']}` | {mean_sd([x['recall_strict'] for x in S])} | "
-                 f"{mean_sd([x['recall_flagged'] for x in S])} | {mean_sd([x['recall_r0'] for x in S])} | "
-                 f"{statistics.mean(x['critic_only'] for x in S):.1f} of {S[-1]['planted']} | "
-                 f"{mean_sd([x['fp_strict_clean'] for x in S])} | {mean_sd([x['fp_review_clean'] for x in S])} | "
-                 f"{mean_sd([x['grounding_rate'] for x in S])} | ${statistics.mean(x['cost_per_doc'] for x in S):.3f} |")
+        for part in ("all", "basic", "hard"):
+            S = [r["summary"] if part == "all" else r["summary"].get("by_difficulty", {}).get(part) for r in rs]
+            S = [x for x in S if x]
+            if not S:
+                continue
+            L.append(f"| {label} | {part} ({S[-1]['planted']} errors) | {len(S)} | `{rs[-1]['models']['analyst']}` | "
+                     f"{mean_sd([x['recall_strict'] for x in S])} | "
+                     f"{mean_sd([x['recall_flagged'] for x in S])} | {mean_sd([x['recall_r0'] for x in S])} | "
+                     f"{statistics.mean(x['critic_only'] for x in S):.1f} | "
+                     f"{mean_sd([x['fp_strict_clean'] for x in S])} | {mean_sd([x['fp_review_clean'] for x in S])} | "
+                     f"{mean_sd([x['grounding_rate'] for x in S])} | ${statistics.mean(x['cost_per_doc'] for x in S):.3f} |")
     latest = max(results, key=lambda r: r["created_at"]) if results else None
     full = [r for r in results if r["params"].get("use_critic")]
     focus = max(full, key=lambda r: r["created_at"]) if full else latest
     s = focus["summary"]
-    L += ["", f"## Latest full-pipeline run: `{focus['eval_id']}`", "",
+    kind_of_run = "full pipeline (analyst ⇄ critic)" if focus["params"].get("use_critic") else "analyst only"
+    L += ["", f"## Latest run, {kind_of_run}: `{focus['eval_id']}`", "",
           f"Models: " + ", ".join(f"{k} = `{v}`" for k, v in focus["models"].items()) +
           f" · embeddings `{focus['embed_model']}` · prompts `{focus['prompts']}` · "
           f"max_claims={focus['params']['max_claims']}, debate_rounds={focus['params']['debate_rounds']}", "",
@@ -306,11 +324,12 @@ def render(results: list[dict[str, Any]]) -> str:
         L.append(f"| {k} ({KIND_RU.get(k, k)}) | {v['n']} | {v['extracted']} | {v['caught']} | {v['flagged']} | "
                  f"{v['caught_r0']} |")
     L += ["", "### Every planted error", "",
-          "| id | kind | planted statement | analyst r0 | final | status | caught |", "|---|---|---|---|---|---|---|"]
+          "| id | set | kind | planted statement | analyst r0 | final | status | caught |",
+          "|---|---|---|---|---|---|---|---|"]
     for d in focus["docs"]:
         for r in d["rows"]:
             mark = "✅" if r["caught"] else ("👁" if r["flagged"] else "—")
-            L.append(f"| {r['id']} | {r['kind']} | {r['text'][:110].replace('|', '/')} | {', '.join(r['r0']) or 'not extracted'} | "
+            L.append(f"| {r['id']} | {d.get('difficulty', 'basic')} | {r['kind']} | {r['text'][:110].replace('|', '/')} | {', '.join(r['r0']) or 'not extracted'} | "
                      f"{', '.join(r['final'])} | {', '.join(r['status'])} | {mark} |")
     fps = [(d["doc"], o) for d in focus["docs"] for o in d["others"] if o["fp_strict"]]
     L += ["", "### False positives (strict) in that run", ""]

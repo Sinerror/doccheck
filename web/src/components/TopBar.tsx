@@ -29,12 +29,12 @@ export function TopBar({ state, mode, info, onHome, onShowReport, canReport }: {
   const live = mode === "live";
   const badgeColor = live ? "#f87171" : "#a78bfa";
   const statusText =
-    state.status === "finished" ? "finished" : state.status === "failed" ? "failed" : info.error ? info.error : info.connected ? "streaming" : info.ended ? "ended" : "connecting…";
+    state.status === "finished" ? "готово" : state.status === "failed" ? "ошибка" : info.error ? info.error : info.connected ? "поток событий" : info.ended ? "завершено" : "подключение…";
 
   return (
     <header className="panel flex flex-wrap items-center gap-x-6 gap-y-3 px-4 py-3">
-      <button onClick={onHome} className="font-mono text-sm tracking-[0.3em] text-cyan hover:text-ink" title="Back to runs">
-        TRIAD
+      <button onClick={onHome} className="font-mono text-sm tracking-[0.3em] text-cyan hover:text-ink" title="К списку прогонов">
+        DOCCHECK
       </button>
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
@@ -55,12 +55,12 @@ export function TopBar({ state, mode, info, onHome, onShowReport, canReport }: {
         </h1>
       </div>
       <div className="flex flex-wrap items-end gap-x-5 gap-y-2">
-        <Stat label="papers scanned" value={state.candidatesScanned} format={fmtInt} title="Search hits returned by OpenAlex + arXiv (before dedup)" />
-        <Stat label="papers kept" value={state.paperOrder.length} format={fmtInt} />
-        <Stat label="chunks" value={state.totalPoints} format={fmtInt} accent="#22d3ee" title="Points in Qdrant for this run" />
-        <Stat label="retrievals" value={state.retrievalCount} format={fmtInt} />
+        <Stat label="источники" value={state.paperOrder.length} format={fmtInt} />
+        <Stat label="фрагменты" value={state.totalPoints} format={fmtInt} accent="#22d3ee" title="Точки в Qdrant: корпус + документ на проверке" />
+        <Stat label="утверждения" value={state.claimOrder.length} format={fmtInt} />
+        <Stat label="поиски" value={state.retrievalCount} format={fmtInt} title="Гибридные запросы к Qdrant (аналитик + инструменты критика)" />
         <Stat
-          label="agents"
+          label="агенты"
           value={Object.keys(state.agents).length}
           format={fmtInt}
           accent="#a78bfa"
@@ -68,17 +68,17 @@ export function TopBar({ state, mode, info, onHome, onShowReport, canReport }: {
             .map((a) => `${a.role}${a.claim_id ? `·${a.claim_id}` : ""}`)
             .join(", ") || "none yet"}`}
         />
-        <Stat label="llm calls" value={m?.llm_calls ?? 0} format={fmtInt} />
-        <Stat label="tokens" value={(m?.tokens_in ?? 0) + (m?.tokens_out ?? 0)} format={fmtCompact} title={`${m?.tokens_in ?? 0} in / ${m?.tokens_out ?? 0} out`} />
-        <Stat label="cost" value={m?.cost_usd ?? 0} format={fmtUsd} accent="#fbbf24" title="Estimate from the router's price table" />
-        <Stat label="elapsed" value={elapsed} format={fmtElapsed} />
+        <Stat label="вызовы LLM" value={m?.llm_calls ?? 0} format={fmtInt} />
+        <Stat label="токены" value={(m?.tokens_in ?? 0) + (m?.tokens_out ?? 0)} format={fmtCompact} title={`${m?.tokens_in ?? 0} in / ${m?.tokens_out ?? 0} out`} />
+        <Stat label="стоимость" value={m?.cost_usd ?? 0} format={fmtUsd} accent="#fbbf24" title="Оценка по прайсу роутера; локальная модель — $0" />
+        <Stat label="время" value={elapsed} format={fmtElapsed} />
         <button
           disabled={!canReport}
           onClick={onShowReport}
           className="rounded-md border border-amber/60 px-3 py-1.5 font-mono text-[11px] uppercase tracking-wider text-amber transition enabled:hover:bg-amber/10 disabled:cursor-not-allowed disabled:border-line disabled:text-ink-3"
-          title={canReport ? "Open the report" : "Available after run.finished"}
+          title={canReport ? "Открыть отчёт" : "Доступен после run.finished"}
         >
-          Report
+          Отчёт
         </button>
       </div>
     </header>

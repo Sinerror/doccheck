@@ -67,7 +67,7 @@ def test_vector_map_snapshot(client):
 
 def test_examples_and_corpus(client):
     ex = client.get("/api/examples").json()
-    assert len(ex) == 10 and ex[0]["name"] == "d01_otvet_vozvrat.md"
+    assert len(ex) == 15 and ex[0]["name"] == "d01_otvet_vozvrat.md"
     assert "Анна" in client.get("/api/examples/d01_otvet_vozvrat.md").json()["text"]
     assert client.get("/api/examples/..%2F..%2Fpyproject.toml").status_code == 404
     corpus = client.get("/api/corpus").json()

@@ -1,0 +1,577 @@
+{
+ "model": "gpt-6.1-sol",
+ "messages": [
+  {
+   "role": "system",
+   "content": "Ты — CRITIC, придирчивый аудитор. ANALYST сверил одно утверждение из исходящего документа компании с фиксированным набором фрагментов источников. Твоя задача — найти, где аналитик ошибся: цитаты не из того фрагмента, пропущенное противоречие, свойство другого тарифа или региона, архивная редакция вместо действующей, ссылка на пункт, который говорит другое, слишком широкая формулировка. Не придумывай проблем: если вердикт верный — AGREE.\n\nИнструменты:\n- `search_corpus(query, k)` — гибридный поиск по источникам компании. Ищи то, чего аналитик не видел, особенно опровержения и ограничения (другой тариф, другой регион, исключения, действующая редакция).\n- `get_chunk(chunk_id)` — прочитать фрагмент целиком.\n- `submit_critique(...)` — итог. У тебя не больше 4 раундов инструментов, потом нужно отправить итог.\n\nФакты, с которыми нельзя спорить:\n- ПРОВЕРКА ЦИТАТ ниже сделана программой. Цитата с ok=false — это issue `ungrounded_quote` (severity не ниже medium, если вердикт на ней держится).\n- Каждая `counter_evidence.quote` должна быть дословной подстрокой (до 300 символов) указанного фрагмента: её проверят так же.\n\nСтандарт, который ты защищаешь:\n- SUPPORTED допустим, только если совпадают числа, единицы, сроки, тариф, регион и действующая редакция. Подтверждение из архивной (утратившей силу) редакции — issue `outdated_source`.\n- Если источники ничего не говорят о факте — верный вердикт UNVERIFIABLE; если говорят иначе — CONTRADICTED; если утверждение шире источника («всем», «на всех тарифах», «круглосуточно») — OVERSTATED.\n- Учитывай контекст документа (регион, тариф, клиент). Не оспаривай верный вердикт из-за оговорок, которые очевидны из контекста или не меняют смысл для клиента: это шум, а не ошибка.\n\nТипы issue: ungrounded_quote, overclaim, missed_contradiction, wrong_scope, weak_evidence, wrong_verdict, outdated_source. Severity: low, medium, high (high — вердикт нужно менять).\nstance=CHALLENGE только если есть хотя бы одно issue medium или high. `suggested_verdict` — когда считаешь, что вердикт должен быть другим, иначе null.\nСначала `reasoning` на русском (до 150 слов)."
+  },
+  {
+   "role": "user",
+   "content": "Документ на проверке: d05_otvet_api\nКонтекст документа: Ответ клиенту на вопросы разработчика об API продукта Сорока CRM. Страна клиента не определяется по тексту. Упоминаются тарифы «Старт» и «Бизнес».\n\nУТВЕРЖДЕНИЕ C1 (тип: feature):\n\"REST API доступен на всех тарифах, включая «Старт».\"\n\nИсходное предложение документа: \"REST API доступен на всех тарифах, включая «Старт».\"\n\n=== ВЕРДИКТ АНАЛИТИКА (раунд 0) ===\n{\n \"reasoning\": \"Утверждение говорит, что REST API доступен на всех тарифах, включая «Старт». Источник прямо указывает: «REST API доступен начиная с тарифа «Команда»», то есть на «Старте» API отсутствует. Дополнительно тарифные описания подтверждают наличие API только на «Команде», «Бизнесе» и «Корпоративном». Также утверждение противоречит формулировке «начиная с», которая исключает более младшие тарифы. Информации о тарифе «Старт» в контексте нет, но «начиная с Команды» однозначно исключает Старт.\",\n \"verdict\": \"CONTRADICTED\",\n \"confidence\": 0.95,\n \"evidence\": [\n  {\n   \"chunk_id\": \"08_integracii.md#0\",\n   \"quote\": \"REST API доступен начиная с тарифа «Команда».\",\n   \"stance\": \"contradicts\"\n  },\n  {\n   \"chunk_id\": \"01_tarify_rf.md#2\",\n   \"quote\": \"Доступен REST API с лимитом 60 запросов в минуту.\",\n   \"stance\": \"context\"\n  },\n  {\n   \"chunk_id\": \"02_tarify_kz.md#2\",\n   \"quote\": \"Доступен REST API с лимитом 60 запросов в минуту.\",\n   \"stance\": \"context\"\n  }\n ],\n \"correction\": \"REST API доступен начиная с тарифа «Команда»; на тарифе «Старт» REST API не предоставляется.\",\n \"concerns\": [\n  \"Утверждение прямо противоречит документации: API начинается с тарифа «Команда», а не со «Старта».\",\n  \"Лимиты API зависят от тарифа (60/300/1000 запросов в минуту), что дополнительно опровергает идею единого доступа «на всех тарифах».\"\n ]\n}\n\n=== ПРОВЕРКА ЦИТАТ (программная) ===\n[\n {\n  \"claim_id\": \"C1\",\n  \"chunk_id\": \"08_integracii.md#0\",\n  \"quote\": \"REST API доступен начиная с тарифа «Команда».\",\n  \"score\": 100.0,\n  \"ok\": true,\n  \"by_role\": \"analyst\",\n  \"round\": 0,\n  \"exists\": true,\n  \"reason\": \"\"\n },\n {\n  \"claim_id\": \"C1\",\n  \"chunk_id\": \"01_tarify_rf.md#2\",\n  \"quote\": \"Доступен REST API с лимитом 60 запросов в минуту.\",\n  \"score\": 100.0,\n  \"ok\": true,\n  \"by_role\": \"analyst\",\n  \"round\": 0,\n  \"exists\": true,\n  \"reason\": \"\"\n },\n {\n  \"claim_id\": \"C1\",\n  \"chunk_id\": \"02_tarify_kz.md#2\",\n  \"quote\": \"Доступен REST API с лимитом 60 запросов в минуту.\",\n  \"score\": 100.0,\n  \"ok\": true,\n  \"by_role\": \"analyst\",\n  \"round\": 0,\n  \"exists\": true,\n  \"reason\": \"\"\n }\n]\n\n=== ФРАГМЕНТЫ, КОТОРЫЕ ВИДЕЛ АНАЛИТИК (chunk_id) ===\n- 08_integracii.md#0 (API и интеграции / REST API)\n- 09_bezopasnost.md#4 (Безопасность и хранение данных / Двухфакторная аутентификация и SSO)\n- 08_integracii.md#4 (API и интеграции / Мессенджеры)\n- 07_podderzhka.md#3 (Поддержка клиентов / Обучение)\n- 08_integracii.md#2 (API и интеграции / Интеграция с 1С)\n- 02_tarify_kz.md#2 (Тарифы Сорока CRM для Казахстана / Тариф «Команда» (Казахстан))\n- 01_tarify_rf.md#3 (Тарифы Сорока CRM для России / Тариф «Бизнес»)\n- 01_tarify_rf.md#2 (Тарифы Сорока CRM для России / Тариф «Команда»)\n\nПроверь вердикт. При необходимости поищи в источниках, затем вызови `submit_critique`."
+  },
+  {
+   "role": "assistant",
+   "content": "Проверю условия API на «Старте» и актуальность источников, на которых основан вердикт.",
+   "tool_calls": [
+    {
+     "id": "call_b294797e5f8d4f23bb5fcf420a254aea",
+     "type": "function",
+     "function": {
+      "name": "search_corpus",
+      "arguments": "{\"query\": \"REST API Старт все тарифы действующая редакция\", \"k\": 6}"
+     }
+    },
+    {
+     "id": "call_47eb861a36fb4966ae4db3a751a3f81a",
+     "type": "function",
+     "function": {
+      "name": "get_chunk",
+      "arguments": "{\"chunk_id\": \"08_integracii.md#0\"}"
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "tool_call_id": "call_b294797e5f8d4f23bb5fcf420a254aea",
+   "content": "[chunk_id=08_integracii.md#0] API и интеграции | раздел: REST API\nREST API доступен начиная с тарифа «Команда». Лимиты запросов зависят от тарифа: 60 запросов в минуту на «Команде», 300 на «Бизнесе», 1000 на «Корпоративном». При превышении лимита API возвращает код 429, а заблокированные запросы не тарифицируются. Повысить лимит на тарифах «Команда» и «Бизнес» нельзя; на тарифе «Корпоративный» лимит может быть увеличен по договорённости.\n\n---\n\n[chunk_id=05_oferta_2025_arhiv.md#0] Публичная оферта Сорока CRM (архивная редакция 2025 года) | раздел: Публичная оферта Сорока CRM (архивная редакция 2025 года)\nРедакция от 1 февраля 2025 года. УТРАТИЛА СИЛУ с 1 марта 2026 года. Документ сохранён для справки по договорам, заключённым до 1 марта 2026 года. Для новых договоров действует редакция от 1 марта 2026 года.\n\n---\n\n[chunk_id=08_integracii.md#2] API и интеграции | раздел: Интеграция с 1С\nДвусторонняя синхронизация контрагентов, счетов и оплат с 1С:Предприятие доступна на тарифах «Бизнес» и «Корпоративный». Синхронизация выполняется каждые 15 минут. Настройка интеграции с 1С выполняется клиентом самостоятельно по инструкции; помощь интегратора оплачивается отдельно.\n\n---\n\n[chunk_id=11_funkcii.md#1] Возможности Сорока CRM | раздел: Автоматизации\nАвтоматизации запускают действия при наступлении событий: создать задачу, отправить письмо, сменить ответственного. На тарифе «Команда» доступно до 20 активных автоматизаций, на тарифе «Бизнес» — до 200, на тарифе «Корпоративный» — без ограничений. На тарифе «Старт» автоматизации недоступны.\n\n---\n\n[chunk_id=02_tarify_kz.md#2] Тарифы Сорока CRM для Казахстана | раздел: Тариф «Команда» (Казахстан)\nТариф «Команда» для Казахстана рассчитан на команды до 20 пользователей. Стоимость — 26 900 ₸ в месяц. В тариф входят 100 ГБ файлового хранилища и до 10 воронок продаж. Доступен REST API с лимитом 60 запросов в минуту.\n\n---\n\n[chunk_id=01_tarify_rf.md#2] Тарифы Сорока CRM для России | раздел: Тариф «Команда»\nТариф «Команда» рассчитан на команды до 25 пользователей. Стоимость — 4 990 ₽ в месяц. В тариф входят 100 ГБ файлового хранилища и до 10 воронок продаж. Доступен REST API с лимитом 60 запросов в минуту. Доступны интеграции с телефонией и Telegram. Докупить пользователей сверх 25 на тарифе «Команда» нельзя: для расширения команды нужно перейти на тариф «Бизнес»."
+  },
+  {
+   "role": "tool",
+   "tool_call_id": "call_47eb861a36fb4966ae4db3a751a3f81a",
+   "content": "[chunk_id=08_integracii.md#0] API и интеграции | раздел: REST API\nREST API доступен начиная с тарифа «Команда». Лимиты запросов зависят от тарифа: 60 запросов в минуту на «Команде», 300 на «Бизнесе», 1000 на «Корпоративном». При превышении лимита API возвращает код 429, а заблокированные запросы не тарифицируются. Повысить лимит на тарифах «Команда» и «Бизнес» нельзя; на тарифе «Корпоративный» лимит может быть увеличен по договорённости."
+  }
+ ],
+ "chunks": [
+  {
+   "id": "resp_00e1c9574006510e016aef41b8ea1c87d1af2a82721f0dcb4a",
+   "choices": [
+    {
+     "delta": {
+      "role": "assistant"
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064824,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_00e1c9574006510e016aef41b8ea1c87d1af2a82721f0dcb4a",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "id": "call_70a2f2d8d085457e88fb62f05276390b",
+        "function": {
+         "arguments": "",
+         "name": "search_corpus"
+        },
+        "type": "function"
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064824,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_00e1c9574006510e016aef41b8ea1c87d1af2a82721f0dcb4a",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "{\""
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064824,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_00e1c9574006510e016aef41b8ea1c87d1af2a82721f0dcb4a",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "query"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064824,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_00e1c9574006510e016aef41b8ea1c87d1af2a82721f0dcb4a",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "\":\""
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064824,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_00e1c9574006510e016aef41b8ea1c87d1af2a82721f0dcb4a",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "т"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064824,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_00e1c9574006510e016aef41b8ea1c87d1af2a82721f0dcb4a",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "ариф"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064824,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_00e1c9574006510e016aef41b8ea1c87d1af2a82721f0dcb4a",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " «"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064824,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_00e1c9574006510e016aef41b8ea1c87d1af2a82721f0dcb4a",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "Ст"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064824,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_00e1c9574006510e016aef41b8ea1c87d1af2a82721f0dcb4a",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "арт"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064824,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_00e1c9574006510e016aef41b8ea1c87d1af2a82721f0dcb4a",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "»"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064824,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_00e1c9574006510e016aef41b8ea1c87d1af2a82721f0dcb4a",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " API"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064824,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_00e1c9574006510e016aef41b8ea1c87d1af2a82721f0dcb4a",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " нед"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064824,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_00e1c9574006510e016aef41b8ea1c87d1af2a82721f0dcb4a",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "оступ"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064824,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_00e1c9574006510e016aef41b8ea1c87d1af2a82721f0dcb4a",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "ен"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064824,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_00e1c9574006510e016aef41b8ea1c87d1af2a82721f0dcb4a",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " Россия"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064824,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_00e1c9574006510e016aef41b8ea1c87d1af2a82721f0dcb4a",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " Казахстан"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064824,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_00e1c9574006510e016aef41b8ea1c87d1af2a82721f0dcb4a",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "\",\""
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064824,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_00e1c9574006510e016aef41b8ea1c87d1af2a82721f0dcb4a",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "k"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064824,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_00e1c9574006510e016aef41b8ea1c87d1af2a82721f0dcb4a",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "\":"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064824,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_00e1c9574006510e016aef41b8ea1c87d1af2a82721f0dcb4a",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "4"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064824,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_00e1c9574006510e016aef41b8ea1c87d1af2a82721f0dcb4a",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "}"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064824,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_00e1c9574006510e016aef41b8ea1c87d1af2a82721f0dcb4a",
+   "choices": [
+    {
+     "delta": {
+      "content": ""
+     },
+     "index": 0,
+     "finish_reason": "tool_calls"
+    }
+   ],
+   "created": 1794064824,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "default"
+  },
+  {
+   "id": "resp_00e1c9574006510e016aef41b8ea1c87d1af2a82721f0dcb4a",
+   "choices": [],
+   "created": 1794064824,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "default",
+   "usage": {
+    "completion_tokens": 34,
+    "prompt_tokens": 7228,
+    "total_tokens": 7262,
+    "prompt_tokens_details": {
+     "cached_tokens": 6144
+    }
+   },
+   "tool_usage": {
+    "image_gen": {
+     "input_tokens": 0,
+     "output_tokens": 0,
+     "total_tokens": 0,
+     "input_tokens_details": {
+      "text_tokens": 0,
+      "image_tokens": 0
+     },
+     "output_tokens_details": {
+      "image_tokens": 0,
+      "text_tokens": 0
+     }
+    },
+    "web_search": {
+     "num_requests": 0
+    }
+   }
+  }
+ ]
+}

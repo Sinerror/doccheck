@@ -23,7 +23,7 @@ def test_labels_are_consistent_with_docs_and_corpus():
             for g in it["gold"]:
                 assert (g["file"], g["section"]) in sections, (it["id"], g)
         kinds |= {p["kind"] for p in d["planted"]}
-    assert len(kinds) == 8 and LAB["totals"]["planted"] >= 30
+    assert len(kinds) == 9 and LAB["totals"]["planted"] >= 50 and LAB["totals"]["hard_docs"] == 5
 
 
 def _c(cid, quote, r0, final, status="accepted", suggested=None, text=None):

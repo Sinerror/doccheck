@@ -26,7 +26,7 @@ def dedup_claims(claims: list[Claim]) -> list[Claim]:
     return out
 
 
-async def extract_claims(ctx: RunCtx, doc: ParsedDoc, title: str) -> list[Claim]:
+async def extract_claims(ctx: RunCtx, doc: ParsedDoc, title: str) -> tuple[list[Claim], str]:
     text = doc.full_text
     truncated = len(text) > MAX_DOC_CHARS
     system, user = load_prompt("scout_claims", max_claims=ctx.params.max_claims, title=title,
@@ -38,5 +38,7 @@ async def extract_claims(ctx: RunCtx, doc: ParsedDoc, title: str) -> list[Claim]
     claims = dedup_claims(out.claims)[: ctx.params.max_claims]
     for i, c in enumerate(claims, 1):  # normalise ids
         c.id = f"C{i}"
-    ctx.bus.emit("scout.claims", {"claims": [c.model_dump(mode="json") for c in claims]}, role="scout")
-    return claims
+    ctx.doc_context = out.document_context.strip()
+    ctx.bus.emit("scout.claims", {"claims": [c.model_dump(mode="json") for c in claims],
+                                  "document_context": ctx.doc_context}, role="scout")
+    return claims, ctx.doc_context

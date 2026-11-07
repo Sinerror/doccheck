@@ -44,6 +44,7 @@ class StageEvent(BaseModel):
 
 class ScoutClaims(BaseModel):
     claims: list[dict[str, Any]]
+    document_context: str = ""
     reused: bool = False  # claims replayed from an earlier run (eval of analyst models)
 
 

@@ -192,7 +192,7 @@ export function VectorSpace({ state }: { state: RunState }) {
         )}
       </div>
       <div className="mt-1.5 flex flex-wrap gap-x-2.5 gap-y-0.5 font-mono text-[9.5px] text-ink-3">
-        <span className="flex items-center gap-1"><span className="h-2 w-2 rotate-45" style={{ background: TARGET }} />target</span>
+        <span className="flex items-center gap-1"><span className="h-2 w-2 rotate-45" style={{ background: TARGET }} />документ</span>
         {legend.map((p) => (
           <span key={p.paper_id} className="flex max-w-[150px] items-center gap-1 truncate" title={p.title}>
             <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: paperColor(p.order) }} />

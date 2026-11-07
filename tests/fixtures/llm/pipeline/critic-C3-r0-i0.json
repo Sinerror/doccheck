@@ -1,0 +1,762 @@
+{
+ "model": "gpt-6.1-sol",
+ "messages": [
+  {
+   "role": "system",
+   "content": "Ты — CRITIC, придирчивый аудитор. ANALYST сверил одно утверждение из исходящего документа компании с фиксированным набором фрагментов источников. Твоя задача — найти, где аналитик ошибся: цитаты не из того фрагмента, пропущенное противоречие, свойство другого тарифа или региона, архивная редакция вместо действующей, ссылка на пункт, который говорит другое, слишком широкая формулировка. Не придумывай проблем: если вердикт верный — AGREE.\n\nИнструменты:\n- `search_corpus(query, k)` — гибридный поиск по источникам компании. Ищи то, чего аналитик не видел, особенно опровержения и ограничения (другой тариф, другой регион, исключения, действующая редакция).\n- `get_chunk(chunk_id)` — прочитать фрагмент целиком.\n- `submit_critique(...)` — итог. У тебя не больше 4 раундов инструментов, потом нужно отправить итог.\n\nФакты, с которыми нельзя спорить:\n- ПРОВЕРКА ЦИТАТ ниже сделана программой. Цитата с ok=false — это issue `ungrounded_quote` (severity не ниже medium, если вердикт на ней держится).\n- Каждая `counter_evidence.quote` должна быть дословной подстрокой (до 300 символов) указанного фрагмента: её проверят так же.\n\nСтандарт, который ты защищаешь:\n- SUPPORTED допустим, только если совпадают числа, единицы, сроки, тариф, регион и действующая редакция. Подтверждение из архивной (утратившей силу) редакции — issue `outdated_source`.\n- Если источники ничего не говорят о факте — верный вердикт UNVERIFIABLE; если говорят иначе — CONTRADICTED; если утверждение шире источника («всем», «на всех тарифах», «круглосуточно») — OVERSTATED.\n- Учитывай контекст документа (регион, тариф, клиент). Не оспаривай верный вердикт из-за оговорок, которые очевидны из контекста или не меняют смысл для клиента: это шум, а не ошибка.\n\nТипы issue: ungrounded_quote, overclaim, missed_contradiction, wrong_scope, weak_evidence, wrong_verdict, outdated_source. Severity: low, medium, high (high — вердикт нужно менять).\nstance=CHALLENGE только если есть хотя бы одно issue medium или high. `suggested_verdict` — когда считаешь, что вердикт должен быть другим, иначе null.\nСначала `reasoning` на русском (до 150 слов)."
+  },
+  {
+   "role": "user",
+   "content": "Документ на проверке: d05_otvet_api\nКонтекст документа: Ответ клиенту на вопросы разработчика об API продукта Сорока CRM. Страна клиента не определяется по тексту. Упоминаются тарифы «Старт» и «Бизнес».\n\nУТВЕРЖДЕНИЕ C3 (тип: number):\n\"На тарифе «Бизнес» можно настроить до 50 вебхуков.\"\n\nИсходное предложение документа: \"На тарифе «Бизнес» можно настроить до 50 вебхуков.\"\n\n=== ВЕРДИКТ АНАЛИТИКА (раунд 0) ===\n{\n \"reasoning\": \"Утверждение: на тарифе «Бизнес» до 50 вебхуков. Источник 08_integracii.md#1 прямо указывает: «Команда» — до 10 вебхуков, «Бизнес» — до 50, «Корпоративный» — без ограничений. Тариф и число совпадают. Регион в этом фрагменте не оговорён, а документ на проверке регион не определяет, поэтому нет оснований снижать вердикт. Остальные фрагменты (лимиты писем, перенос записей, воронки) к вебхукам не относятся.\",\n \"verdict\": \"SUPPORTED\",\n \"confidence\": 0.93,\n \"evidence\": [\n  {\n   \"chunk_id\": \"08_integracii.md#1\",\n   \"quote\": \"На тарифе «Команда» можно настроить до 10 вебхуков, на тарифе «Бизнес» — до 50, на тарифе «Корпоративный» количество не ограничено.\",\n   \"stance\": \"supports\"\n  }\n ],\n \"correction\": null,\n \"concerns\": [\n  \"Источник по вебхукам — раздел «API и интеграции» из общего документа; регион в нём не указан, а документ на проверке регион не определяет. Утверждение о лимите вебхуков на «Бизнесе» подтверждено только этим фрагментом.\"\n ]\n}\n\n=== ПРОВЕРКА ЦИТАТ (программная) ===\n[\n {\n  \"claim_id\": \"C3\",\n  \"chunk_id\": \"08_integracii.md#1\",\n  \"quote\": \"На тарифе «Команда» можно настроить до 10 вебхуков, на тарифе «Бизнес» — до 50, на тарифе «Корпоративный» количество не ограничено.\",\n  \"score\": 100.0,\n  \"ok\": true,\n  \"by_role\": \"analyst\",\n  \"round\": 0,\n  \"exists\": true,\n  \"reason\": \"\"\n }\n]\n\n=== ФРАГМЕНТЫ, КОТОРЫЕ ВИДЕЛ АНАЛИТИК (chunk_id) ===\n- 08_integracii.md#1 (API и интеграции / Вебхуки)\n- 08_integracii.md#5 (API и интеграции / Email-рассылки)\n- 10_migraciya.md#1 (Перенос данных в Сорока CRM / Услуга «Переезд под ключ»)\n- 07_podderzhka.md#3 (Поддержка клиентов / Обучение)\n- 11_funkcii.md#0 (Возможности Сорока CRM / Воронки продаж и сделки)\n- 02_tarify_kz.md#3 (Тарифы Сорока CRM для Казахстана / Тариф «Бизнес» (Казахстан))\n- 03_skidki.md#3 (Скидки и специальные условия / Акция «Переезд»)\n- 01_tarify_rf.md#3 (Тарифы Сорока CRM для России / Тариф «Бизнес»)\n\nПроверь вердикт. При необходимости поищи в источниках, затем вызови `submit_critique`."
+  }
+ ],
+ "chunks": [
+  {
+   "id": "resp_002d039309c6f428016aef41dea8b087d18e1224bd3b4d83b7",
+   "choices": [
+    {
+     "delta": {
+      "role": "assistant"
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064863,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_002d039309c6f428016aef41dea8b087d18e1224bd3b4d83b7",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "id": "call_95df74f611414e3e961e1380f9ac8ed3",
+        "function": {
+         "arguments": "",
+         "name": "search_corpus"
+        },
+        "type": "function"
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064863,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_002d039309c6f428016aef41dea8b087d18e1224bd3b4d83b7",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "{\""
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064863,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_002d039309c6f428016aef41dea8b087d18e1224bd3b4d83b7",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "query"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064863,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_002d039309c6f428016aef41dea8b087d18e1224bd3b4d83b7",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "\":\""
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064863,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_002d039309c6f428016aef41dea8b087d18e1224bd3b4d83b7",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "д"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064863,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_002d039309c6f428016aef41dea8b087d18e1224bd3b4d83b7",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "ейств"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064863,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_002d039309c6f428016aef41dea8b087d18e1224bd3b4d83b7",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "ующая"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064863,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_002d039309c6f428016aef41dea8b087d18e1224bd3b4d83b7",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " редак"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064863,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_002d039309c6f428016aef41dea8b087d18e1224bd3b4d83b7",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "ция"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064863,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_002d039309c6f428016aef41dea8b087d18e1224bd3b4d83b7",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " тариф"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064863,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_002d039309c6f428016aef41dea8b087d18e1224bd3b4d83b7",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " Б"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064863,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_002d039309c6f428016aef41dea8b087d18e1224bd3b4d83b7",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "изнес"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064863,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_002d039309c6f428016aef41dea8b087d18e1224bd3b4d83b7",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " лим"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064863,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_002d039309c6f428016aef41dea8b087d18e1224bd3b4d83b7",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "ит"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064863,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_002d039309c6f428016aef41dea8b087d18e1224bd3b4d83b7",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " веб"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064863,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_002d039309c6f428016aef41dea8b087d18e1224bd3b4d83b7",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "ху"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064863,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_002d039309c6f428016aef41dea8b087d18e1224bd3b4d83b7",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "ков"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064863,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_002d039309c6f428016aef41dea8b087d18e1224bd3b4d83b7",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " "
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064863,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_002d039309c6f428016aef41dea8b087d18e1224bd3b4d83b7",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "50"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064863,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_002d039309c6f428016aef41dea8b087d18e1224bd3b4d83b7",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " веб"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064863,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_002d039309c6f428016aef41dea8b087d18e1224bd3b4d83b7",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "ху"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064863,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_002d039309c6f428016aef41dea8b087d18e1224bd3b4d83b7",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "ков"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064863,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_002d039309c6f428016aef41dea8b087d18e1224bd3b4d83b7",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " тариф"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064863,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_002d039309c6f428016aef41dea8b087d18e1224bd3b4d83b7",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "ы"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064863,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_002d039309c6f428016aef41dea8b087d18e1224bd3b4d83b7",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " API"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064863,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_002d039309c6f428016aef41dea8b087d18e1224bd3b4d83b7",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " интег"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064863,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_002d039309c6f428016aef41dea8b087d18e1224bd3b4d83b7",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "ра"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064863,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_002d039309c6f428016aef41dea8b087d18e1224bd3b4d83b7",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "ции"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064863,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_002d039309c6f428016aef41dea8b087d18e1224bd3b4d83b7",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " Россия"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064863,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_002d039309c6f428016aef41dea8b087d18e1224bd3b4d83b7",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": " Казахстан"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064863,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_002d039309c6f428016aef41dea8b087d18e1224bd3b4d83b7",
+   "choices": [
+    {
+     "delta": {
+      "tool_calls": [
+       {
+        "index": 0,
+        "function": {
+         "arguments": "\"}"
+        }
+       }
+      ]
+     },
+     "index": 0
+    }
+   ],
+   "created": 1794064863,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "auto"
+  },
+  {
+   "id": "resp_002d039309c6f428016aef41dea8b087d18e1224bd3b4d83b7",
+   "choices": [
+    {
+     "delta": {
+      "content": ""
+     },
+     "index": 0,
+     "finish_reason": "tool_calls"
+    }
+   ],
+   "created": 1794064863,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "default"
+  },
+  {
+   "id": "resp_002d039309c6f428016aef41dea8b087d18e1224bd3b4d83b7",
+   "choices": [],
+   "created": 1794064863,
+   "model": "gpt-6.1-sol",
+   "object": "chat.completion.chunk",
+   "service_tier": "default",
+   "usage": {
+    "completion_tokens": 44,
+    "prompt_tokens": 6136,
+    "total_tokens": 6180
+   },
+   "tool_usage": {
+    "image_gen": {
+     "input_tokens": 0,
+     "output_tokens": 0,
+     "total_tokens": 0,
+     "input_tokens_details": {
+      "text_tokens": 0,
+      "image_tokens": 0
+     },
+     "output_tokens_details": {
+      "image_tokens": 0,
+      "text_tokens": 0
+     }
+    },
+    "web_search": {
+     "num_requests": 0
+    }
+   }
+  }
+ ]
+}
